@@ -81,6 +81,15 @@ def pick_data_file(directory):
     return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
+def load_uploaded_data(uploaded_file):
+    uploaded_file.seek(0)
+    filename = uploaded_file.name or ""
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".json":
+        return pd.read_json(uploaded_file)
+    return pd.read_csv(uploaded_file)
+
+
 @st.cache_data(show_spinner=False)
 def load_local_data(path_value):
     path = resolve_local_path(path_value)
@@ -218,6 +227,7 @@ def main():
     st.set_page_config(page_title="Social Media Analytics", layout="wide")
     st.title("Social Media Analytics Dashboard")
 
+    uploaded_file = None
     with st.sidebar:
         st.header("Data source")
         source = st.radio("Load from", ["BigQuery", "Local file"], index=0)
@@ -243,6 +253,10 @@ def main():
                 "CSV/JSON path or folder",
                 value=default_local,
             )
+            uploaded_file = st.file_uploader(
+                "Upload CSV/JSON (overrides path)",
+                type=["csv", "json"],
+            )
 
         st.markdown("---")
         st.header("Filters")
@@ -255,7 +269,10 @@ def main():
             credentials_info = load_credentials_from_secrets()
             df = load_bigquery_data(table_id, sql, project_id, credentials_info)
         else:
-            df = load_local_data(local_path)
+            if uploaded_file is not None:
+                df = load_uploaded_data(uploaded_file)
+            else:
+                df = load_local_data(local_path)
     except Exception as exc:
         st.error(f"Failed to load data: {exc}")
         return
