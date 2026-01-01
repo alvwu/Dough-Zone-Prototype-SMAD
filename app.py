@@ -1,0 +1,699 @@
+"""
+Social Media Analytics Dashboard
+Main Streamlit application for visualizing and analyzing social media data.
+"""
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from pathlib import Path
+from datetime import datetime
+
+# Import custom modules
+import database
+from data_processing import (
+    extract_time_features,
+    calculate_engagement_metrics,
+    get_posting_time_analysis,
+    get_content_type_analysis,
+    get_trend_analysis,
+    get_top_performing_posts,
+    create_summary_statistics
+)
+from model import EngagementPredictor, compare_models
+
+# Page configuration
+st.set_page_config(
+    page_title="Social Media Analytics Dashboard",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS
+st.markdown("""
+<style>
+    .metric-card {
+        background-color: #f0f2f6;
+        border-radius: 10px;
+        padding: 20px;
+        text-align: center;
+    }
+    .stMetric {
+        background-color: #ffffff;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+def init_session_state():
+    """Initialize session state variables."""
+    if 'db_initialized' not in st.session_state:
+        st.session_state.db_initialized = False
+    if 'model_trained' not in st.session_state:
+        st.session_state.model_trained = False
+    if 'predictor' not in st.session_state:
+        st.session_state.predictor = None
+
+
+def load_data():
+    """Load data from database or CSV."""
+    # Initialize database
+    database.init_database()
+
+    # Check if data exists in database
+    df = database.get_all_posts()
+
+    if len(df) == 0:
+        # Try to load from CSV
+        csv_path = Path(__file__).parent / "insta_dummy_data.csv"
+        if csv_path.exists():
+            n_loaded = database.load_csv_to_database(str(csv_path), replace_existing=True)
+            st.success(f"Loaded {n_loaded} posts from CSV file")
+            df = database.get_all_posts()
+
+    return df
+
+
+def render_sidebar():
+    """Render the sidebar with navigation and controls."""
+    st.sidebar.title("📊 Analytics Dashboard")
+    st.sidebar.markdown("---")
+
+    # Navigation
+    page = st.sidebar.radio(
+        "Navigation",
+        ["Overview", "Engagement Analysis", "Time Analysis", "Prediction Model", "Data Management"]
+    )
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Quick Stats")
+
+    df = load_data()
+    if len(df) > 0:
+        summary = database.get_engagement_summary()
+        st.sidebar.metric("Total Posts", summary['total_posts'])
+        st.sidebar.metric("Total Likes", f"{summary['total_likes']:,}")
+        st.sidebar.metric("Total Comments", f"{summary['total_comments']:,}")
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### About")
+    st.sidebar.info(
+        "Social Media Analytics Dashboard for optimizing marketing campaigns. "
+        "Analyze engagement patterns and predict post performance."
+    )
+
+    return page
+
+
+def render_overview(df: pd.DataFrame):
+    """Render the overview page."""
+    st.title("📊 Social Media Analytics Overview")
+    st.markdown("---")
+
+    if len(df) == 0:
+        st.warning("No data available. Please load data in the Data Management section.")
+        return
+
+    # Process data
+    df_processed = extract_time_features(df)
+    df_processed = calculate_engagement_metrics(df_processed)
+    summary = create_summary_statistics(df)
+
+    # Key Metrics Row
+    col1, col2, col3, col4, col5 = st.columns(5)
+
+    with col1:
+        st.metric(
+            "Total Posts",
+            summary['total_posts'],
+            help="Total number of posts in the database"
+        )
+
+    with col2:
+        st.metric(
+            "Total Likes",
+            f"{summary['engagement']['total_likes']:,}",
+            help="Sum of all likes"
+        )
+
+    with col3:
+        st.metric(
+            "Total Comments",
+            f"{summary['engagement']['total_comments']:,}",
+            help="Sum of all comments"
+        )
+
+    with col4:
+        st.metric(
+            "Avg. Likes",
+            f"{summary['engagement']['avg_likes']:,.0f}",
+            help="Average likes per post"
+        )
+
+    with col5:
+        st.metric(
+            "Avg. Comments",
+            f"{summary['engagement']['avg_comments']:,.0f}",
+            help="Average comments per post"
+        )
+
+    st.markdown("---")
+
+    # Charts Row
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Engagement Over Time")
+        trend_data = get_trend_analysis(df)
+        fig = px.line(
+            trend_data,
+            x='date',
+            y=['total_likes', 'total_comments'],
+            title='Daily Engagement Trend',
+            labels={'value': 'Count', 'date': 'Date', 'variable': 'Metric'}
+        )
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        st.subheader("Content Type Distribution")
+        content_data = df_processed.copy()
+        content_data['content_type'] = content_data['is_video'].map({
+            True: 'Video', False: 'Image',
+            1: 'Video', 0: 'Image',
+            'TRUE': 'Video', 'FALSE': 'Image'
+        })
+        content_counts = content_data['content_type'].value_counts()
+        fig = px.pie(
+            values=content_counts.values,
+            names=content_counts.index,
+            title='Video vs Image Posts'
+        )
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+
+    # Top Performing Posts
+    st.subheader("🏆 Top Performing Posts")
+    top_posts = get_top_performing_posts(df, n=5, metric='total_engagement')
+    top_posts = top_posts.rename(columns={
+        'shortcode': 'Post ID',
+        'likes': 'Likes',
+        'comments': 'Comments',
+        'total_engagement': 'Total Engagement',
+        'posting_date': 'Posted',
+        'is_video': 'Video'
+    })
+    st.dataframe(top_posts, use_container_width=True)
+
+    # Best Posting Times
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("📅 Best Day to Post")
+        st.info(f"**{summary['best_performing']['best_day']}** has the highest average engagement")
+
+    with col2:
+        st.subheader("⏰ Best Hour to Post")
+        best_hour = summary['best_performing']['best_hour']
+        st.info(f"**{best_hour}:00** ({best_hour}:00 - {best_hour+1}:00) has the highest average engagement")
+
+
+def render_engagement_analysis(df: pd.DataFrame):
+    """Render the engagement analysis page."""
+    st.title("💬 Engagement Analysis")
+    st.markdown("---")
+
+    if len(df) == 0:
+        st.warning("No data available.")
+        return
+
+    df_processed = extract_time_features(df)
+    df_processed = calculate_engagement_metrics(df_processed)
+
+    # Engagement Distribution
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Likes Distribution")
+        fig = px.histogram(
+            df_processed,
+            x='likes',
+            nbins=20,
+            title='Distribution of Likes',
+            color_discrete_sequence=['#1f77b4']
+        )
+        fig.update_layout(height=350)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        st.subheader("Comments Distribution")
+        fig = px.histogram(
+            df_processed,
+            x='comments',
+            nbins=20,
+            title='Distribution of Comments',
+            color_discrete_sequence=['#ff7f0e']
+        )
+        fig.update_layout(height=350)
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+
+    # Likes vs Comments Scatter
+    st.subheader("Likes vs Comments Correlation")
+    df_processed['content_type'] = df_processed['is_video'].map({
+        True: 'Video', False: 'Image',
+        1: 'Video', 0: 'Image',
+        'TRUE': 'Video', 'FALSE': 'Image'
+    })
+    fig = px.scatter(
+        df_processed,
+        x='likes',
+        y='comments',
+        color='content_type',
+        size='total_engagement',
+        hover_data=['shortcode', 'posting_date'],
+        title='Engagement Correlation by Content Type'
+    )
+    fig.update_layout(height=500)
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+
+    # Content Type Comparison
+    st.subheader("📹 Video vs 📷 Image Performance")
+
+    content_analysis = df_processed.groupby('content_type').agg({
+        'likes': ['mean', 'sum', 'count'],
+        'comments': ['mean', 'sum'],
+        'total_engagement': ['mean', 'sum']
+    }).round(2)
+
+    content_analysis.columns = ['Avg Likes', 'Total Likes', 'Count', 'Avg Comments', 'Total Comments', 'Avg Engagement', 'Total Engagement']
+    st.dataframe(content_analysis, use_container_width=True)
+
+    # Bar chart comparison
+    fig = make_subplots(rows=1, cols=2, subplot_titles=('Average Likes', 'Average Comments'))
+
+    fig.add_trace(
+        go.Bar(name='Likes', x=content_analysis.index, y=content_analysis['Avg Likes']),
+        row=1, col=1
+    )
+    fig.add_trace(
+        go.Bar(name='Comments', x=content_analysis.index, y=content_analysis['Avg Comments']),
+        row=1, col=2
+    )
+    fig.update_layout(height=400, showlegend=False)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Performance Categories
+    st.markdown("---")
+    st.subheader("📊 Performance Distribution")
+
+    perf_counts = df_processed['performance_category'].value_counts()
+    fig = px.bar(
+        x=perf_counts.index,
+        y=perf_counts.values,
+        title='Posts by Performance Category',
+        labels={'x': 'Category', 'y': 'Number of Posts'},
+        color=perf_counts.index,
+        color_discrete_map={'High': 'green', 'Medium': 'blue', 'Low': 'orange', 'Very Low': 'red'}
+    )
+    fig.update_layout(height=400)
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def render_time_analysis(df: pd.DataFrame):
+    """Render the time analysis page."""
+    st.title("⏰ Time-Based Analysis")
+    st.markdown("---")
+
+    if len(df) == 0:
+        st.warning("No data available.")
+        return
+
+    df_processed = extract_time_features(df)
+    df_processed = calculate_engagement_metrics(df_processed)
+
+    # Hourly Heatmap
+    st.subheader("Engagement by Hour of Day")
+    hourly_data = df_processed.groupby('hour')['total_engagement'].mean().reset_index()
+    fig = px.bar(
+        hourly_data,
+        x='hour',
+        y='total_engagement',
+        title='Average Engagement by Hour',
+        labels={'hour': 'Hour of Day', 'total_engagement': 'Avg Engagement'},
+        color='total_engagement',
+        color_continuous_scale='Blues'
+    )
+    fig.update_layout(height=400)
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+
+    # Day of Week Analysis
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Engagement by Day of Week")
+        day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        daily_data = df_processed.groupby('day_name')['total_engagement'].mean().reindex(day_order).reset_index()
+        daily_data.columns = ['day_name', 'total_engagement']
+        fig = px.bar(
+            daily_data,
+            x='day_name',
+            y='total_engagement',
+            title='Average Engagement by Day',
+            color='total_engagement',
+            color_continuous_scale='Oranges'
+        )
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        st.subheader("Weekend vs Weekday")
+        weekend_data = df_processed.groupby('is_weekend').agg({
+            'likes': 'mean',
+            'comments': 'mean',
+            'total_engagement': 'mean'
+        }).round(2).reset_index()
+        weekend_data['period'] = weekend_data['is_weekend'].map({0: 'Weekday', 1: 'Weekend'})
+
+        fig = px.bar(
+            weekend_data,
+            x='period',
+            y=['likes', 'comments'],
+            title='Avg Engagement: Weekend vs Weekday',
+            barmode='group'
+        )
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+
+    # Time of Day Analysis
+    st.subheader("Engagement by Time of Day")
+    time_order = ['morning', 'afternoon', 'evening', 'night']
+    time_data = df_processed.groupby('time_of_day').agg({
+        'likes': 'mean',
+        'comments': 'mean',
+        'total_engagement': 'mean',
+        'shortcode': 'count'
+    }).round(2)
+    time_data.columns = ['Avg Likes', 'Avg Comments', 'Avg Engagement', 'Post Count']
+
+    # Reorder if all time periods exist
+    available_times = [t for t in time_order if t in time_data.index]
+    time_data = time_data.reindex(available_times)
+
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        fig = px.bar(
+            x=time_data.index,
+            y=time_data['Avg Engagement'],
+            title='Average Engagement by Time of Day',
+            labels={'x': 'Time of Day', 'y': 'Average Engagement'},
+            color=time_data['Avg Engagement'],
+            color_continuous_scale='Viridis'
+        )
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        st.markdown("### Time of Day Breakdown")
+        st.markdown("""
+        - **Morning**: 5 AM - 12 PM
+        - **Afternoon**: 12 PM - 5 PM
+        - **Evening**: 5 PM - 9 PM
+        - **Night**: 9 PM - 5 AM
+        """)
+        st.dataframe(time_data, use_container_width=True)
+
+
+def render_prediction_model(df: pd.DataFrame):
+    """Render the prediction model page."""
+    st.title("🤖 Engagement Prediction Model")
+    st.markdown("---")
+
+    if len(df) == 0:
+        st.warning("No data available for training.")
+        return
+
+    init_session_state()
+
+    # Model Training Section
+    st.subheader("Model Training")
+
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        model_type = st.selectbox(
+            "Select Model Type",
+            ["random_forest", "gradient_boosting", "linear"],
+            help="Choose the machine learning algorithm for prediction"
+        )
+
+    with col2:
+        train_button = st.button("🚀 Train Model", use_container_width=True)
+
+    if train_button:
+        with st.spinner("Training model..."):
+            predictor = EngagementPredictor()
+            metrics = predictor.train(df, model_type=model_type)
+            st.session_state.predictor = predictor
+            st.session_state.model_trained = True
+
+        st.success("Model trained successfully!")
+
+        # Display metrics
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("### Likes Prediction Metrics")
+            st.metric("R² Score", f"{metrics['likes']['r2']:.4f}")
+            st.metric("Mean Absolute Error", f"{metrics['likes']['mae']:.2f}")
+            st.metric("RMSE", f"{metrics['likes']['rmse']:.2f}")
+
+        with col2:
+            st.markdown("### Comments Prediction Metrics")
+            st.metric("R² Score", f"{metrics['comments']['r2']:.4f}")
+            st.metric("Mean Absolute Error", f"{metrics['comments']['mae']:.2f}")
+            st.metric("RMSE", f"{metrics['comments']['rmse']:.2f}")
+
+    st.markdown("---")
+
+    # Model Comparison
+    st.subheader("Model Comparison")
+    if st.button("📊 Compare All Models"):
+        with st.spinner("Comparing models..."):
+            comparison_df = compare_models(df)
+        st.dataframe(comparison_df, use_container_width=True)
+
+    st.markdown("---")
+
+    # Prediction Tool
+    st.subheader("🔮 Predict Engagement")
+
+    if st.session_state.model_trained and st.session_state.predictor:
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            pred_hour = st.slider("Hour of Day", 0, 23, 12)
+
+        with col2:
+            pred_day = st.selectbox(
+                "Day of Week",
+                options=list(range(7)),
+                format_func=lambda x: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][x]
+            )
+
+        with col3:
+            pred_weekend = 1 if pred_day >= 5 else 0
+            st.info(f"Weekend: {'Yes' if pred_weekend else 'No'}")
+
+        with col4:
+            pred_video = st.radio("Content Type", ["Image", "Video"])
+            is_video = 1 if pred_video == "Video" else 0
+
+        if st.button("Predict Engagement"):
+            prediction = st.session_state.predictor.predict_single(
+                pred_hour, pred_day, pred_weekend, is_video
+            )
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Predicted Likes", f"{prediction['predicted_likes']:,}")
+            with col2:
+                st.metric("Predicted Comments", f"{prediction['predicted_comments']:,}")
+            with col3:
+                st.metric("Total Engagement", f"{prediction['predicted_engagement']:,}")
+
+        st.markdown("---")
+
+        # Feature Importance
+        st.subheader("📊 Feature Importance")
+        importance = st.session_state.predictor.get_feature_importance()
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("### Likes Model")
+            likes_imp = pd.DataFrame.from_dict(importance['likes'], orient='index', columns=['Importance'])
+            fig = px.bar(likes_imp, y=likes_imp.index, x='Importance', orientation='h', title='Feature Importance for Likes')
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col2:
+            st.markdown("### Comments Model")
+            comments_imp = pd.DataFrame.from_dict(importance['comments'], orient='index', columns=['Importance'])
+            fig = px.bar(comments_imp, y=comments_imp.index, x='Importance', orientation='h', title='Feature Importance for Comments')
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Optimal Posting Time
+        st.markdown("---")
+        st.subheader("🎯 Optimal Posting Time")
+
+        optimal = st.session_state.predictor.get_optimal_posting_time()
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Best Day", optimal['day_name'])
+        with col2:
+            st.metric("Best Hour", f"{optimal['hour']}:00")
+        with col3:
+            st.metric("Content Type", "Video" if optimal['is_video'] else "Image")
+        with col4:
+            st.metric("Expected Engagement", f"{optimal['predicted_engagement']:,}")
+
+    else:
+        st.info("Please train a model first to use the prediction tool.")
+
+
+def render_data_management(df: pd.DataFrame):
+    """Render the data management page."""
+    st.title("📁 Data Management")
+    st.markdown("---")
+
+    # Current Data Status
+    st.subheader("Current Data Status")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.metric("Total Records", len(df))
+
+    with col2:
+        if len(df) > 0:
+            date_range = f"{df['posting_date'].min()} to {df['posting_date'].max()}"
+            st.info(f"Date Range: {date_range}")
+
+    st.markdown("---")
+
+    # Upload New Data
+    st.subheader("Upload New Data")
+    uploaded_file = st.file_uploader("Choose a CSV file", type=['csv'])
+
+    if uploaded_file is not None:
+        try:
+            new_df = pd.read_csv(uploaded_file)
+            st.write("Preview of uploaded data:")
+            st.dataframe(new_df.head())
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Append to Database"):
+                    # Save to temp file and load
+                    temp_path = Path(__file__).parent / "temp_upload.csv"
+                    new_df.to_csv(temp_path, index=False)
+                    n_loaded = database.load_csv_to_database(str(temp_path))
+                    temp_path.unlink()
+                    st.success(f"Added {n_loaded} records to the database")
+                    st.rerun()
+
+            with col2:
+                if st.button("Replace Database"):
+                    temp_path = Path(__file__).parent / "temp_upload.csv"
+                    new_df.to_csv(temp_path, index=False)
+                    n_loaded = database.load_csv_to_database(str(temp_path), replace_existing=True)
+                    temp_path.unlink()
+                    st.success(f"Replaced database with {n_loaded} records")
+                    st.rerun()
+
+        except Exception as e:
+            st.error(f"Error reading file: {e}")
+
+    st.markdown("---")
+
+    # View Current Data
+    st.subheader("Current Database Contents")
+    if len(df) > 0:
+        st.dataframe(df, use_container_width=True)
+
+        # Download button
+        csv = df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Data as CSV",
+            data=csv,
+            file_name="social_media_data.csv",
+            mime="text/csv"
+        )
+    else:
+        st.warning("No data in database")
+
+    st.markdown("---")
+
+    # Database Actions
+    st.subheader("Database Actions")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("🔄 Reload from CSV"):
+            csv_path = Path(__file__).parent / "insta_dummy_data.csv"
+            if csv_path.exists():
+                n_loaded = database.load_csv_to_database(str(csv_path), replace_existing=True)
+                st.success(f"Reloaded {n_loaded} records from insta_dummy_data.csv")
+                st.rerun()
+            else:
+                st.error("CSV file not found")
+
+    with col2:
+        if st.button("🗑️ Clear Database", type="secondary"):
+            # Add confirmation
+            st.warning("This will delete all data. Click again to confirm.")
+
+
+def main():
+    """Main application entry point."""
+    init_session_state()
+
+    # Load data
+    df = load_data()
+
+    # Render sidebar and get current page
+    page = render_sidebar()
+
+    # Render selected page
+    if page == "Overview":
+        render_overview(df)
+    elif page == "Engagement Analysis":
+        render_engagement_analysis(df)
+    elif page == "Time Analysis":
+        render_time_analysis(df)
+    elif page == "Prediction Model":
+        render_prediction_model(df)
+    elif page == "Data Management":
+        render_data_management(df)
+
+
+if __name__ == "__main__":
+    main()
