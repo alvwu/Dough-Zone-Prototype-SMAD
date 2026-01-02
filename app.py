@@ -24,6 +24,7 @@ from data_processing import (
     create_summary_statistics
 )
 from model import EngagementPredictor, compare_models
+from vision_api import analyze_image_with_vision_api, validate_api_key
 
 # Page configuration
 st.set_page_config(
@@ -44,6 +45,10 @@ def init_session_state():
         st.session_state.model_trained = False
     if 'predictor' not in st.session_state:
         st.session_state.predictor = None
+    if 'vision_api_key' not in st.session_state:
+        st.session_state.vision_api_key = ""
+    if 'api_key_valid' not in st.session_state:
+        st.session_state.api_key_valid = False
 
 
 def load_data():
@@ -581,7 +586,7 @@ def render_image_analysis(df: pd.DataFrame):
     existing_analyses = database.get_image_analyses()
 
     # Create tabs for different functions
-    tab1, tab2, tab3 = st.tabs(["Add Analysis", "View Analyses", "Image-Engagement Insights"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Add Analysis", "View Analyses", "Image-Engagement Insights", "API Settings"])
 
     with tab1:
         st.subheader("Manually Add Image Analysis")
@@ -626,9 +631,40 @@ def render_image_analysis(df: pd.DataFrame):
         with col2:
             st.markdown("### Image Characteristics")
 
+            # Auto-analyze with Vision API
+            if st.session_state.api_key_valid and st.session_state.vision_api_key:
+                if st.button("🔍 Auto-Analyze with Vision API", use_container_width=True):
+                    if selected_image:
+                        with st.spinner("Analyzing image with Google Vision API..."):
+                            try:
+                                image_full_path = Path(__file__).parent / "image" / selected_image
+                                result = analyze_image_with_vision_api(
+                                    str(image_full_path),
+                                    st.session_state.vision_api_key
+                                )
+                                st.session_state.auto_labels = result.get('labels', '')
+                                st.session_state.auto_colors = result.get('dominant_colors', '')
+                                st.session_state.auto_objects = result.get('objects_detected', '')
+                                st.session_state.auto_text = result.get('text_detected', '')
+                                st.success("Analysis complete! Fields populated below.")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error analyzing image: {str(e)}")
+                    else:
+                        st.warning("Please select an image first")
+            else:
+                st.info("Configure your API key in the 'API Settings' tab to enable auto-analysis.")
+
+            # Get auto-filled values from session state if available
+            default_labels = st.session_state.get('auto_labels', '')
+            default_colors = st.session_state.get('auto_colors', '')
+            default_objects = st.session_state.get('auto_objects', '')
+            default_text = st.session_state.get('auto_text', '')
+
             # Labels input
             labels = st.text_area(
                 "Labels / Tags",
+                value=default_labels,
                 placeholder="e.g., food, dessert, restaurant, colorful, appetizing",
                 help="Comma-separated labels describing what's in the image"
             )
@@ -636,6 +672,7 @@ def render_image_analysis(df: pd.DataFrame):
             # Dominant colors
             dominant_colors = st.text_area(
                 "Dominant Colors",
+                value=default_colors,
                 placeholder="e.g., red, white, brown, golden",
                 help="Comma-separated list of main colors in the image"
             )
@@ -643,6 +680,7 @@ def render_image_analysis(df: pd.DataFrame):
             # Objects detected
             objects_detected = st.text_area(
                 "Objects Detected",
+                value=default_objects,
                 placeholder="e.g., plate, food, table, person, utensils",
                 help="Comma-separated list of objects visible in the image"
             )
@@ -650,6 +688,7 @@ def render_image_analysis(df: pd.DataFrame):
             # Text in image
             text_detected = st.text_area(
                 "Text in Image (OCR)",
+                value=default_text,
                 placeholder="e.g., menu text, brand name, signage",
                 help="Any text visible in the image"
             )
@@ -831,17 +870,121 @@ def render_image_analysis(df: pd.DataFrame):
         else:
             st.info("Add image analyses and ensure posts are loaded to see insights.")
 
+    with tab4:
+        st.subheader("Google Vision API Settings")
+        st.markdown("Configure your Google Cloud Vision API key to enable automatic image analysis.")
+
+        st.markdown("---")
+
+        # API Key input
+        api_key_input = st.text_input(
+            "Google Vision API Key",
+            value=st.session_state.vision_api_key,
+            type="password",
+            help="Enter your Google Cloud Vision API key. Get one from the Google Cloud Console."
+        )
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("💾 Save API Key", use_container_width=True):
+                if api_key_input:
+                    st.session_state.vision_api_key = api_key_input
+                    with st.spinner("Validating API key..."):
+                        is_valid = validate_api_key(api_key_input)
+                        st.session_state.api_key_valid = is_valid
+                    if is_valid:
+                        st.success("API key saved and validated successfully!")
+                    else:
+                        st.warning("API key saved but could not be validated. It may still work.")
+                else:
+                    st.error("Please enter an API key")
+
+        with col2:
+            if st.button("🗑️ Clear API Key", use_container_width=True):
+                st.session_state.vision_api_key = ""
+                st.session_state.api_key_valid = False
+                st.info("API key cleared")
+                st.rerun()
+
+        # Status display
+        st.markdown("---")
+        st.markdown("### Status")
+
+        if st.session_state.vision_api_key:
+            if st.session_state.api_key_valid:
+                st.success("✅ API key is configured and validated")
+            else:
+                st.warning("⚠️ API key is configured but not validated")
+        else:
+            st.info("ℹ️ No API key configured")
+
+        # Instructions
         st.markdown("---")
         st.markdown("""
-        ### Future: Google Vision API Integration
-        When ready, the Google Vision API can automatically detect:
-        - **Labels**: Objects, themes, concepts
-        - **Colors**: Dominant color palette
-        - **Objects**: Specific items with locations
-        - **Text**: OCR for any text in images
+        ### How to Get an API Key
 
-        This will replace manual entry with automated analysis.
+        1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+        2. Create a new project or select an existing one
+        3. Enable the **Cloud Vision API**
+        4. Go to **APIs & Services** → **Credentials**
+        5. Click **Create Credentials** → **API Key**
+        6. Copy the API key and paste it above
+
+        **Note:** The API key is stored in session memory only and will be cleared when you close the browser.
+
+        **Cost:** Google Vision API offers 1,000 free requests per month.
         """)
+
+        # Batch analyze section
+        st.markdown("---")
+        st.subheader("Batch Analyze All Images")
+
+        if st.session_state.api_key_valid and st.session_state.vision_api_key:
+            available_images = get_available_images()
+            st.write(f"Found {len(available_images)} images in the /image folder")
+
+            if st.button("🔄 Analyze All Unprocessed Images", use_container_width=True):
+                existing = database.get_image_analyses()
+                analyzed_images = set(existing['image_name'].tolist()) if len(existing) > 0 else set()
+
+                unprocessed = [img for img in available_images if img not in analyzed_images]
+
+                if not unprocessed:
+                    st.info("All images have already been analyzed!")
+                else:
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+
+                    for i, image_name in enumerate(unprocessed):
+                        status_text.text(f"Analyzing {image_name}...")
+                        try:
+                            image_full_path = Path(__file__).parent / "image" / image_name
+                            result = analyze_image_with_vision_api(
+                                str(image_full_path),
+                                st.session_state.vision_api_key
+                            )
+
+                            # Save to database (without post linkage for batch)
+                            database.save_image_analysis(
+                                post_shortcode=None,
+                                image_path=str(Path("image") / image_name),
+                                image_name=image_name,
+                                labels=result.get('labels'),
+                                dominant_colors=result.get('dominant_colors'),
+                                objects_detected=result.get('objects_detected'),
+                                text_detected=result.get('text_detected')
+                            )
+                        except Exception as e:
+                            st.warning(f"Failed to analyze {image_name}: {str(e)}")
+
+                        progress_bar.progress((i + 1) / len(unprocessed))
+
+                    status_text.text("Done!")
+                    st.success(f"Analyzed {len(unprocessed)} images!")
+                    st.rerun()
+        else:
+            st.info("Configure and validate your API key above to enable batch analysis.")
 
 
 def render_data_management(df: pd.DataFrame):
