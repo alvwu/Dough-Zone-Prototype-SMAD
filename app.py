@@ -24,7 +24,7 @@ from data_processing import (
     create_summary_statistics
 )
 from model import EngagementPredictor, compare_models
-from vision_api import analyze_image_with_vision_api, validate_api_key
+from vision_api import analyze_image_with_vision_api, validate_api_key, validate_credentials
 
 # Page configuration
 st.set_page_config(
@@ -49,6 +49,10 @@ def init_session_state():
         st.session_state.vision_api_key = ""
     if 'api_key_valid' not in st.session_state:
         st.session_state.api_key_valid = False
+    if 'vision_credentials' not in st.session_state:
+        st.session_state.vision_credentials = None
+    if 'credentials_valid' not in st.session_state:
+        st.session_state.credentials_valid = False
 
 
 def load_data():
@@ -632,16 +636,25 @@ def render_image_analysis(df: pd.DataFrame):
             st.markdown("### Image Characteristics")
 
             # Auto-analyze with Vision API
-            if st.session_state.api_key_valid and st.session_state.vision_api_key:
+            has_api_key = st.session_state.api_key_valid and st.session_state.vision_api_key
+            has_credentials = st.session_state.credentials_valid and st.session_state.vision_credentials
+
+            if has_api_key or has_credentials:
                 if st.button("🔍 Auto-Analyze with Vision API", use_container_width=True):
                     if selected_image:
                         with st.spinner("Analyzing image with Google Vision API..."):
                             try:
                                 image_full_path = Path(__file__).parent / "image" / selected_image
-                                result = analyze_image_with_vision_api(
-                                    str(image_full_path),
-                                    st.session_state.vision_api_key
-                                )
+                                if has_credentials:
+                                    result = analyze_image_with_vision_api(
+                                        str(image_full_path),
+                                        credentials_dict=st.session_state.vision_credentials
+                                    )
+                                else:
+                                    result = analyze_image_with_vision_api(
+                                        str(image_full_path),
+                                        api_key=st.session_state.vision_api_key
+                                    )
                                 st.session_state.auto_labels = result.get('labels', '')
                                 st.session_state.auto_colors = result.get('dominant_colors', '')
                                 st.session_state.auto_objects = result.get('objects_detected', '')
@@ -653,7 +666,7 @@ def render_image_analysis(df: pd.DataFrame):
                     else:
                         st.warning("Please select an image first")
             else:
-                st.info("Configure your API key in the 'API Settings' tab to enable auto-analysis.")
+                st.info("Configure your API key or upload credentials in the 'API Settings' tab to enable auto-analysis.")
 
             # Get auto-filled values from session state if available
             default_labels = st.session_state.get('auto_labels', '')
@@ -872,75 +885,158 @@ def render_image_analysis(df: pd.DataFrame):
 
     with tab4:
         st.subheader("Google Vision API Settings")
-        st.markdown("Configure your Google Cloud Vision API key to enable automatic image analysis.")
+        st.markdown("Configure your Google Cloud Vision API credentials to enable automatic image analysis.")
+
+        # Authentication method selection
+        auth_method = st.radio(
+            "Authentication Method",
+            ["API Key (Simple)", "Service Account JSON (Recommended)"],
+            help="Choose how to authenticate with Google Cloud Vision API"
+        )
 
         st.markdown("---")
 
-        # API Key input
-        api_key_input = st.text_input(
-            "Google Vision API Key",
-            value=st.session_state.vision_api_key,
-            type="password",
-            help="Enter your Google Cloud Vision API key. Get one from the Google Cloud Console."
-        )
+        if auth_method == "API Key (Simple)":
+            # API Key input
+            api_key_input = st.text_input(
+                "Google Vision API Key",
+                value=st.session_state.vision_api_key,
+                type="password",
+                help="Enter your Google Cloud Vision API key."
+            )
 
-        col1, col2 = st.columns(2)
+            col1, col2 = st.columns(2)
 
-        with col1:
-            if st.button("💾 Save API Key", use_container_width=True):
-                if api_key_input:
-                    st.session_state.vision_api_key = api_key_input
-                    with st.spinner("Validating API key..."):
-                        is_valid = validate_api_key(api_key_input)
-                        st.session_state.api_key_valid = is_valid
-                    if is_valid:
-                        st.success("API key saved and validated successfully!")
+            with col1:
+                if st.button("💾 Save API Key", use_container_width=True):
+                    if api_key_input:
+                        st.session_state.vision_api_key = api_key_input
+                        with st.spinner("Validating API key..."):
+                            is_valid = validate_api_key(api_key_input)
+                            st.session_state.api_key_valid = is_valid
+                        if is_valid:
+                            st.success("API key saved and validated successfully!")
+                        else:
+                            st.warning("API key saved but could not be validated. It may still work.")
                     else:
-                        st.warning("API key saved but could not be validated. It may still work.")
-                else:
-                    st.error("Please enter an API key")
+                        st.error("Please enter an API key")
 
-        with col2:
-            if st.button("🗑️ Clear API Key", use_container_width=True):
-                st.session_state.vision_api_key = ""
-                st.session_state.api_key_valid = False
-                st.info("API key cleared")
-                st.rerun()
+            with col2:
+                if st.button("🗑️ Clear API Key", use_container_width=True):
+                    st.session_state.vision_api_key = ""
+                    st.session_state.api_key_valid = False
+                    st.info("API key cleared")
+                    st.rerun()
+
+            st.markdown("---")
+            st.markdown("""
+            ### How to Get an API Key
+            1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+            2. Create a new project or select an existing one
+            3. Enable the **Cloud Vision API**
+            4. Go to **APIs & Services** → **Credentials**
+            5. Click **Create Credentials** → **API Key**
+            6. Copy the API key and paste it above
+            """)
+
+        else:
+            # JSON Credentials upload
+            st.markdown("### Upload Service Account JSON")
+            uploaded_file = st.file_uploader(
+                "Drop your service account JSON file here",
+                type=['json'],
+                help="Upload the JSON key file from your Google Cloud service account"
+            )
+
+            if uploaded_file is not None:
+                try:
+                    import json
+                    credentials_content = uploaded_file.read().decode('utf-8')
+                    credentials_dict = json.loads(credentials_content)
+
+                    # Validate required fields
+                    required_fields = ['private_key', 'client_email', 'project_id']
+                    missing_fields = [f for f in required_fields if f not in credentials_dict]
+
+                    if missing_fields:
+                        st.error(f"Invalid credentials file. Missing fields: {', '.join(missing_fields)}")
+                    else:
+                        st.success(f"Credentials loaded for project: **{credentials_dict.get('project_id')}**")
+                        st.info(f"Service account: {credentials_dict.get('client_email')}")
+
+                        if st.button("💾 Save Credentials", use_container_width=True):
+                            st.session_state.vision_credentials = credentials_dict
+                            with st.spinner("Validating credentials..."):
+                                try:
+                                    is_valid = validate_credentials(credentials_dict)
+                                    st.session_state.credentials_valid = is_valid
+                                    if is_valid:
+                                        st.success("Credentials saved and validated successfully!")
+                                    else:
+                                        st.warning("Credentials saved but could not be validated.")
+                                except Exception as e:
+                                    st.session_state.credentials_valid = False
+                                    st.warning(f"Credentials saved. Validation skipped: {str(e)}")
+                                    st.session_state.credentials_valid = True  # Allow usage anyway
+                            st.rerun()
+
+                except json.JSONDecodeError:
+                    st.error("Invalid JSON file. Please upload a valid service account JSON file.")
+                except Exception as e:
+                    st.error(f"Error reading file: {str(e)}")
+
+            if st.session_state.vision_credentials:
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.info(f"Current: {st.session_state.vision_credentials.get('client_email', 'Unknown')}")
+                with col2:
+                    if st.button("🗑️ Clear Credentials", use_container_width=True):
+                        st.session_state.vision_credentials = None
+                        st.session_state.credentials_valid = False
+                        st.info("Credentials cleared")
+                        st.rerun()
+
+            st.markdown("---")
+            st.markdown("""
+            ### How to Get Service Account JSON
+            1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+            2. Create a new project or select an existing one
+            3. Enable the **Cloud Vision API**
+            4. Go to **IAM & Admin** → **Service Accounts**
+            5. Click **Create Service Account**
+            6. Give it a name and click **Create**
+            7. Grant the role **Cloud Vision API User**
+            8. Click **Done**, then click on the service account
+            9. Go to **Keys** → **Add Key** → **Create new key** → **JSON**
+            10. Upload the downloaded JSON file above
+            """)
 
         # Status display
         st.markdown("---")
-        st.markdown("### Status")
+        st.markdown("### Current Status")
 
-        if st.session_state.vision_api_key:
-            if st.session_state.api_key_valid:
-                st.success("✅ API key is configured and validated")
-            else:
-                st.warning("⚠️ API key is configured but not validated")
+        has_api_key = st.session_state.api_key_valid and st.session_state.vision_api_key
+        has_credentials = st.session_state.credentials_valid and st.session_state.vision_credentials
+
+        if has_credentials:
+            st.success(f"✅ Service Account configured: {st.session_state.vision_credentials.get('client_email', 'Unknown')}")
+        elif has_api_key:
+            st.success("✅ API key is configured and validated")
+        elif st.session_state.vision_api_key:
+            st.warning("⚠️ API key is configured but not validated")
+        elif st.session_state.vision_credentials:
+            st.warning("⚠️ Credentials are configured but not validated")
         else:
-            st.info("ℹ️ No API key configured")
+            st.info("ℹ️ No credentials configured")
 
-        # Instructions
-        st.markdown("---")
-        st.markdown("""
-        ### How to Get an API Key
-
-        1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-        2. Create a new project or select an existing one
-        3. Enable the **Cloud Vision API**
-        4. Go to **APIs & Services** → **Credentials**
-        5. Click **Create Credentials** → **API Key**
-        6. Copy the API key and paste it above
-
-        **Note:** The API key is stored in session memory only and will be cleared when you close the browser.
-
-        **Cost:** Google Vision API offers 1,000 free requests per month.
-        """)
+        st.markdown("**Note:** Credentials are stored in session memory only and will be cleared when you close the browser.")
+        st.markdown("**Cost:** Google Vision API offers 1,000 free requests per month.")
 
         # Batch analyze section
         st.markdown("---")
         st.subheader("Batch Analyze All Images")
 
-        if st.session_state.api_key_valid and st.session_state.vision_api_key:
+        if has_api_key or has_credentials:
             available_images = get_available_images()
             st.write(f"Found {len(available_images)} images in the /image folder")
 
@@ -960,10 +1056,16 @@ def render_image_analysis(df: pd.DataFrame):
                         status_text.text(f"Analyzing {image_name}...")
                         try:
                             image_full_path = Path(__file__).parent / "image" / image_name
-                            result = analyze_image_with_vision_api(
-                                str(image_full_path),
-                                st.session_state.vision_api_key
-                            )
+                            if has_credentials:
+                                result = analyze_image_with_vision_api(
+                                    str(image_full_path),
+                                    credentials_dict=st.session_state.vision_credentials
+                                )
+                            else:
+                                result = analyze_image_with_vision_api(
+                                    str(image_full_path),
+                                    api_key=st.session_state.vision_api_key
+                                )
 
                             # Save to database (without post linkage for batch)
                             database.save_image_analysis(
@@ -984,7 +1086,7 @@ def render_image_analysis(df: pd.DataFrame):
                     st.success(f"Analyzed {len(unprocessed)} images!")
                     st.rerun()
         else:
-            st.info("Configure and validate your API key above to enable batch analysis.")
+            st.info("Configure and validate your credentials above to enable batch analysis.")
 
 
 def render_data_management(df: pd.DataFrame):

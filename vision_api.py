@@ -4,21 +4,132 @@ Handles image analysis using Google Cloud Vision API.
 """
 
 import base64
+import json
+import time
 import requests
 from pathlib import Path
 
 
-def analyze_image_with_vision_api(image_path: str, api_key: str) -> dict:
+def get_access_token_from_credentials(credentials_dict: dict) -> str:
+    """
+    Get an access token from service account credentials using JWT.
+
+    Args:
+        credentials_dict: The parsed JSON credentials dictionary
+
+    Returns:
+        Access token string
+    """
+    import jwt
+    from datetime import datetime, timedelta
+
+    # Extract required fields
+    private_key = credentials_dict['private_key']
+    client_email = credentials_dict['client_email']
+    token_uri = credentials_dict.get('token_uri', 'https://oauth2.googleapis.com/token')
+
+    # Create JWT
+    now = datetime.utcnow()
+    payload = {
+        'iss': client_email,
+        'sub': client_email,
+        'aud': token_uri,
+        'iat': now,
+        'exp': now + timedelta(hours=1),
+        'scope': 'https://www.googleapis.com/auth/cloud-vision'
+    }
+
+    # Sign JWT with private key
+    signed_jwt = jwt.encode(payload, private_key, algorithm='RS256')
+
+    # Exchange JWT for access token
+    response = requests.post(
+        token_uri,
+        data={
+            'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+            'assertion': signed_jwt
+        }
+    )
+
+    if response.status_code != 200:
+        raise Exception(f"Failed to get access token: {response.text}")
+
+    return response.json()['access_token']
+
+
+def analyze_image_with_credentials(image_path: str, credentials_dict: dict) -> dict:
+    """
+    Analyze an image using Google Cloud Vision API with service account credentials.
+
+    Args:
+        image_path: Path to the image file
+        credentials_dict: Parsed JSON credentials dictionary
+
+    Returns:
+        Dictionary containing labels, colors, objects, and text detected
+    """
+    # Get access token
+    access_token = get_access_token_from_credentials(credentials_dict)
+
+    # Read and encode image
+    image_path = Path(image_path)
+    if not image_path.exists():
+        raise FileNotFoundError(f"Image not found: {image_path}")
+
+    with open(image_path, 'rb') as image_file:
+        image_content = base64.b64encode(image_file.read()).decode('utf-8')
+
+    # Vision API endpoint (without API key, using OAuth)
+    url = "https://vision.googleapis.com/v1/images:annotate"
+
+    # Request payload
+    payload = {
+        "requests": [{
+            "image": {
+                "content": image_content
+            },
+            "features": [
+                {"type": "LABEL_DETECTION", "maxResults": 10},
+                {"type": "IMAGE_PROPERTIES", "maxResults": 5},
+                {"type": "OBJECT_LOCALIZATION", "maxResults": 10},
+                {"type": "TEXT_DETECTION", "maxResults": 10}
+            ]
+        }]
+    }
+
+    # Make API request with Bearer token
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json'
+    }
+    response = requests.post(url, json=payload, headers=headers)
+
+    if response.status_code != 200:
+        error_msg = response.json().get('error', {}).get('message', 'Unknown error')
+        raise Exception(f"Vision API error: {error_msg}")
+
+    return parse_vision_response(response.json())
+
+
+def analyze_image_with_vision_api(image_path: str, api_key: str = None, credentials_dict: dict = None) -> dict:
     """
     Analyze an image using Google Cloud Vision API.
 
     Args:
         image_path: Path to the image file
-        api_key: Google Cloud Vision API key
+        api_key: Google Cloud Vision API key (option 1)
+        credentials_dict: Parsed JSON credentials dictionary (option 2)
 
     Returns:
         Dictionary containing labels, colors, objects, and text detected
     """
+    # Use credentials if provided, otherwise use API key
+    if credentials_dict:
+        return analyze_image_with_credentials(image_path, credentials_dict)
+
+    if not api_key:
+        raise ValueError("Either api_key or credentials_dict must be provided")
+
     # Read and encode image
     image_path = Path(image_path)
     if not image_path.exists():
@@ -52,8 +163,11 @@ def analyze_image_with_vision_api(image_path: str, api_key: str) -> dict:
         error_msg = response.json().get('error', {}).get('message', 'Unknown error')
         raise Exception(f"Vision API error: {error_msg}")
 
-    result = response.json()
+    return parse_vision_response(response.json())
 
+
+def parse_vision_response(result: dict) -> dict:
+    """Parse the Vision API response and extract relevant information."""
     # Parse response
     if 'responses' not in result or len(result['responses']) == 0:
         raise Exception("No response from Vision API")
@@ -98,6 +212,30 @@ def analyze_image_with_vision_api(image_path: str, api_key: str) -> dict:
         'objects_detected': ', '.join(objects) if objects else None,
         'text_detected': text if text else None
     }
+
+
+def validate_credentials(credentials_dict: dict) -> bool:
+    """
+    Validate service account credentials by attempting to get an access token.
+
+    Args:
+        credentials_dict: Parsed JSON credentials dictionary
+
+    Returns:
+        True if valid, False otherwise
+    """
+    try:
+        # Check required fields
+        required_fields = ['private_key', 'client_email', 'project_id']
+        for field in required_fields:
+            if field not in credentials_dict:
+                return False
+
+        # Try to get an access token
+        get_access_token_from_credentials(credentials_dict)
+        return True
+    except Exception:
+        return False
 
 
 def get_color_name(r: int, g: int, b: int) -> str:
