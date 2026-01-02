@@ -33,20 +33,26 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Custom CSS - supports both light and dark mode
 st.markdown("""
 <style>
     .metric-card {
-        background-color: #f0f2f6;
+        background-color: var(--background-secondary);
         border-radius: 10px;
         padding: 20px;
         text-align: center;
     }
     .stMetric {
-        background-color: #ffffff;
         padding: 15px;
         border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    /* Ensure text visibility in both modes */
+    .stMarkdown, .stText, p, span, label {
+        color: var(--text-color);
+    }
+    /* Info boxes */
+    .stAlert > div {
+        color: inherit;
     }
 </style>
 """, unsafe_allow_html=True)
