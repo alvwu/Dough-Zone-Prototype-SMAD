@@ -89,7 +89,7 @@ def render_sidebar():
     # Navigation
     page = st.sidebar.radio(
         "Navigation",
-        ["Overview", "Engagement Analysis", "Time Analysis", "Prediction Model", "Data Management"]
+        ["Overview", "Engagement Analysis", "Time Analysis", "Image Analysis", "Prediction Model", "Data Management"]
     )
 
     st.sidebar.markdown("---")
@@ -580,6 +580,286 @@ def render_prediction_model(df: pd.DataFrame):
         st.info("Please train a model first to use the prediction tool.")
 
 
+def get_available_images():
+    """Get list of images from the image folder."""
+    image_dir = Path(__file__).parent / "image"
+    if image_dir.exists():
+        return [f.name for f in image_dir.iterdir() if f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif']]
+    return []
+
+
+def render_image_analysis(df: pd.DataFrame):
+    """Render the image analysis page for manual input."""
+    st.title("🖼️ Image Analysis")
+    st.markdown("---")
+
+    # Get existing image analyses
+    existing_analyses = database.get_image_analyses()
+
+    # Create tabs for different functions
+    tab1, tab2, tab3 = st.tabs(["Add Analysis", "View Analyses", "Image-Engagement Insights"])
+
+    with tab1:
+        st.subheader("Manually Add Image Analysis")
+        st.markdown("Enter image characteristics to link with post engagement data.")
+
+        col1, col2 = st.columns([1, 1])
+
+        with col1:
+            # Select post
+            if len(df) > 0:
+                post_options = df['shortcode'].tolist()
+                selected_post = st.selectbox(
+                    "Select Post (by shortcode)",
+                    options=post_options,
+                    help="Link this image analysis to a post"
+                )
+
+                # Show post details
+                post_data = df[df['shortcode'] == selected_post].iloc[0]
+                st.info(f"**Likes:** {post_data['likes']:,} | **Comments:** {post_data['comments']:,}")
+            else:
+                st.warning("No posts available. Load data first.")
+                selected_post = None
+
+            # Select image
+            available_images = get_available_images()
+            if available_images:
+                selected_image = st.selectbox(
+                    "Select Image",
+                    options=available_images,
+                    help="Select an image from the /image folder"
+                )
+
+                # Display the selected image
+                image_path = Path(__file__).parent / "image" / selected_image
+                if image_path.exists():
+                    st.image(str(image_path), caption=selected_image, width=300)
+            else:
+                st.warning("No images found in /image folder")
+                selected_image = None
+
+        with col2:
+            st.markdown("### Image Characteristics")
+
+            # Labels input
+            labels = st.text_area(
+                "Labels / Tags",
+                placeholder="e.g., food, dessert, restaurant, colorful, appetizing",
+                help="Comma-separated labels describing what's in the image"
+            )
+
+            # Dominant colors
+            dominant_colors = st.text_area(
+                "Dominant Colors",
+                placeholder="e.g., red, white, brown, golden",
+                help="Comma-separated list of main colors in the image"
+            )
+
+            # Objects detected
+            objects_detected = st.text_area(
+                "Objects Detected",
+                placeholder="e.g., plate, food, table, person, utensils",
+                help="Comma-separated list of objects visible in the image"
+            )
+
+            # Text in image
+            text_detected = st.text_area(
+                "Text in Image (OCR)",
+                placeholder="e.g., menu text, brand name, signage",
+                help="Any text visible in the image"
+            )
+
+        st.markdown("---")
+
+        # Save button
+        if st.button("💾 Save Image Analysis", use_container_width=True):
+            if selected_post and selected_image:
+                image_path_str = str(Path("image") / selected_image)
+                database.save_image_analysis(
+                    post_shortcode=selected_post,
+                    image_path=image_path_str,
+                    image_name=selected_image,
+                    labels=labels if labels else None,
+                    dominant_colors=dominant_colors if dominant_colors else None,
+                    objects_detected=objects_detected if objects_detected else None,
+                    text_detected=text_detected if text_detected else None
+                )
+                st.success(f"Saved analysis for {selected_image} linked to post {selected_post}")
+                st.rerun()
+            else:
+                st.error("Please select both a post and an image")
+
+    with tab2:
+        st.subheader("Saved Image Analyses")
+
+        if len(existing_analyses) > 0:
+            # Summary metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Analyses", len(existing_analyses))
+            with col2:
+                unique_posts = existing_analyses['post_shortcode'].nunique()
+                st.metric("Posts with Images", unique_posts)
+            with col3:
+                # Count unique labels
+                all_labels = []
+                for labels in existing_analyses['labels'].dropna():
+                    all_labels.extend([l.strip() for l in labels.split(',')])
+                st.metric("Unique Labels", len(set(all_labels)))
+
+            st.markdown("---")
+
+            # Display analyses with images
+            for idx, row in existing_analyses.iterrows():
+                with st.expander(f"📷 {row['image_name']} → Post: {row['post_shortcode']}"):
+                    col1, col2 = st.columns([1, 2])
+
+                    with col1:
+                        image_path = Path(__file__).parent / row['image_path']
+                        if image_path.exists():
+                            st.image(str(image_path), width=200)
+
+                    with col2:
+                        if row['labels']:
+                            st.markdown(f"**Labels:** {row['labels']}")
+                        if row['dominant_colors']:
+                            st.markdown(f"**Colors:** {row['dominant_colors']}")
+                        if row['objects_detected']:
+                            st.markdown(f"**Objects:** {row['objects_detected']}")
+                        if row['text_detected']:
+                            st.markdown(f"**Text:** {row['text_detected']}")
+
+                        # Show linked post engagement
+                        post_data = df[df['shortcode'] == row['post_shortcode']]
+                        if len(post_data) > 0:
+                            post = post_data.iloc[0]
+                            st.markdown(f"**Engagement:** {post['likes']:,} likes, {post['comments']:,} comments")
+
+            # Download analyses
+            st.markdown("---")
+            csv = existing_analyses.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Analyses as CSV",
+                data=csv,
+                file_name="image_analyses.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("No image analyses saved yet. Use the 'Add Analysis' tab to add some.")
+
+    with tab3:
+        st.subheader("Image-Engagement Insights")
+
+        if len(existing_analyses) > 0 and len(df) > 0:
+            # Merge analyses with post data
+            merged = existing_analyses.merge(
+                df[['shortcode', 'likes', 'comments']],
+                left_on='post_shortcode',
+                right_on='shortcode',
+                how='left'
+            )
+            merged['total_engagement'] = merged['likes'] + merged['comments']
+
+            # Label analysis
+            st.markdown("### Engagement by Label")
+
+            # Extract and count labels
+            label_engagement = []
+            for idx, row in merged.iterrows():
+                if row['labels']:
+                    for label in row['labels'].split(','):
+                        label = label.strip().lower()
+                        if label:
+                            label_engagement.append({
+                                'label': label,
+                                'likes': row['likes'],
+                                'comments': row['comments'],
+                                'total_engagement': row['total_engagement']
+                            })
+
+            if label_engagement:
+                label_df = pd.DataFrame(label_engagement)
+                label_stats = label_df.groupby('label').agg({
+                    'likes': 'mean',
+                    'comments': 'mean',
+                    'total_engagement': ['mean', 'count']
+                }).round(2)
+                label_stats.columns = ['Avg Likes', 'Avg Comments', 'Avg Engagement', 'Count']
+                label_stats = label_stats.sort_values('Avg Engagement', ascending=False)
+
+                # Bar chart
+                fig = px.bar(
+                    label_stats.reset_index(),
+                    x='label',
+                    y='Avg Engagement',
+                    title='Average Engagement by Image Label',
+                    color='Avg Engagement',
+                    color_continuous_scale='Viridis'
+                )
+                fig.update_layout(height=400)
+                st.plotly_chart(fig, use_container_width=True)
+
+                st.dataframe(label_stats, use_container_width=True)
+
+            # Color analysis
+            st.markdown("### Engagement by Dominant Color")
+
+            color_engagement = []
+            for idx, row in merged.iterrows():
+                if row['dominant_colors']:
+                    for color in row['dominant_colors'].split(','):
+                        color = color.strip().lower()
+                        if color:
+                            color_engagement.append({
+                                'color': color,
+                                'likes': row['likes'],
+                                'comments': row['comments'],
+                                'total_engagement': row['total_engagement']
+                            })
+
+            if color_engagement:
+                color_df = pd.DataFrame(color_engagement)
+                color_stats = color_df.groupby('color').agg({
+                    'likes': 'mean',
+                    'comments': 'mean',
+                    'total_engagement': ['mean', 'count']
+                }).round(2)
+                color_stats.columns = ['Avg Likes', 'Avg Comments', 'Avg Engagement', 'Count']
+                color_stats = color_stats.sort_values('Avg Engagement', ascending=False)
+
+                fig = px.bar(
+                    color_stats.reset_index(),
+                    x='color',
+                    y='Avg Engagement',
+                    title='Average Engagement by Dominant Color',
+                    color='Avg Engagement',
+                    color_continuous_scale='RdYlGn'
+                )
+                fig.update_layout(height=400)
+                st.plotly_chart(fig, use_container_width=True)
+
+                st.dataframe(color_stats, use_container_width=True)
+
+            if not label_engagement and not color_engagement:
+                st.info("Add labels and colors to image analyses to see insights.")
+
+        else:
+            st.info("Add image analyses and ensure posts are loaded to see insights.")
+
+        st.markdown("---")
+        st.markdown("""
+        ### Future: Google Vision API Integration
+        When ready, the Google Vision API can automatically detect:
+        - **Labels**: Objects, themes, concepts
+        - **Colors**: Dominant color palette
+        - **Objects**: Specific items with locations
+        - **Text**: OCR for any text in images
+
+        This will replace manual entry with automated analysis.
+        """)
+
+
 def render_data_management(df: pd.DataFrame):
     """Render the data management page."""
     st.title("📁 Data Management")
@@ -689,6 +969,8 @@ def main():
         render_engagement_analysis(df)
     elif page == "Time Analysis":
         render_time_analysis(df)
+    elif page == "Image Analysis":
+        render_image_analysis(df)
     elif page == "Prediction Model":
         render_prediction_model(df)
     elif page == "Data Management":
