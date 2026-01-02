@@ -33,29 +33,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS - supports both light and dark mode
-st.markdown("""
-<style>
-    .metric-card {
-        background-color: var(--background-secondary);
-        border-radius: 10px;
-        padding: 20px;
-        text-align: center;
-    }
-    .stMetric {
-        padding: 15px;
-        border-radius: 8px;
-    }
-    /* Ensure text visibility in both modes */
-    .stMarkdown, .stText, p, span, label {
-        color: var(--text-color);
-    }
-    /* Info boxes */
-    .stAlert > div {
-        color: inherit;
-    }
-</style>
-""", unsafe_allow_html=True)
+# No custom CSS - use Streamlit's default theme handling
 
 
 def init_session_state():
