@@ -786,6 +786,7 @@ def render_image_analysis(df: pd.DataFrame):
 
     with tab3:
         st.subheader("Image-Engagement Insights")
+        st.markdown("Discover how image characteristics correlate with post engagement. This analysis shows which labels, colors, and objects are associated with higher likes and comments.")
 
         if len(existing_analyses) > 0 and len(df) > 0:
             # Merge analyses with post data
