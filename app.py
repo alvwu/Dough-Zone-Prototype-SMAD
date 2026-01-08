@@ -842,75 +842,78 @@ def render_image_analysis(df: pd.DataFrame):
         st.markdown("### 💡 Content Recommendations")
         st.markdown("Data-driven insights to help guide your content strategy")
 
-        # Calculate metrics for recommendations
-        avg_likes = df_processed['likes'].mean()
-        avg_comments = df_processed['comments'].mean()
-        top_quartile = df_processed['total_engagement'].quantile(0.75)
-        top_posts = df_processed[df_processed['total_engagement'] >= top_quartile]
-        avg_caption = df_processed['caption_length'].mean()
-        avg_hashtags = df_processed['hashtag_count'].mean()
-        top_caption = top_posts['caption_length'].mean() if not top_posts.empty else avg_caption
-        top_hashtags = top_posts['hashtag_count'].mean() if not top_posts.empty else avg_hashtags
-        comment_rate = (avg_comments / avg_likes) if avg_likes else 0
-
-        # Get top labels if available
-        top_labels_str = ""
+        # Only show recommendations if Vision API results exist
         if st.session_state.vision_results:
+            # Calculate metrics for recommendations
+            avg_likes = df_processed['likes'].mean()
+            avg_comments = df_processed['comments'].mean()
+            top_quartile = df_processed['total_engagement'].quantile(0.75)
+            top_posts = df_processed[df_processed['total_engagement'] >= top_quartile]
+            avg_caption = df_processed['caption_length'].mean()
+            avg_hashtags = df_processed['hashtag_count'].mean()
+            top_caption = top_posts['caption_length'].mean() if not top_posts.empty else avg_caption
+            top_hashtags = top_posts['hashtag_count'].mean() if not top_posts.empty else avg_hashtags
+            comment_rate = (avg_comments / avg_likes) if avg_likes else 0
+
+            # Get top labels
             all_labels = []
             for vision_data in st.session_state.vision_results.values():
                 if vision_data.get('labels'):
                     labels = [l.strip() for l in vision_data['labels'].split(',')]
                     all_labels.extend(labels)
+            top_labels_str = ""
             if all_labels:
                 top_3_labels = pd.Series(all_labels).value_counts().head(3).index.tolist()
                 top_labels_str = ", ".join(top_3_labels)
 
-        # Build recommendations
-        recommendations = [
-            {
-                "icon": "📝",
-                "title": "Caption Length",
-                "detail": f"Top performing posts average **{top_caption:.0f} characters** vs. {avg_caption:.0f} overall. Consider longer, story-driven captions."
-            },
-            {
-                "icon": "🏷️",
-                "title": "Hashtag Strategy",
-                "detail": f"High performers use around **{top_hashtags:.1f} hashtags**. Focus on brand, product, and location tags."
-            },
-            {
-                "icon": "💬",
-                "title": "Conversation Starter",
-                "detail": f"Comments are **{comment_rate:.1%}** of likes. Add questions or calls-to-action to boost replies."
-            },
-            {
-                "icon": "🎯",
-                "title": "Hook First",
-                "detail": "Start captions with a compelling hook, question, or seasonal tie-in to grab attention."
-            },
-            {
-                "icon": "📸",
-                "title": "Visual Consistency",
-                "detail": f"Top visual elements: **{top_labels_str if top_labels_str else 'Analyze images to see'}**. Repeat signature visuals to build brand recognition."
-            },
-            {
-                "icon": "⏰",
-                "title": "Timing Matters",
-                "detail": "Check the Time Analysis page to find your optimal posting windows."
-            }
-        ]
+            # Build recommendations
+            recommendations = [
+                {
+                    "icon": "📝",
+                    "title": "Caption Length",
+                    "detail": f"Top performing posts average **{top_caption:.0f} characters** vs. {avg_caption:.0f} overall. Consider longer, story-driven captions."
+                },
+                {
+                    "icon": "🏷️",
+                    "title": "Hashtag Strategy",
+                    "detail": f"High performers use around **{top_hashtags:.1f} hashtags**. Focus on brand, product, and location tags."
+                },
+                {
+                    "icon": "💬",
+                    "title": "Conversation Starter",
+                    "detail": f"Comments are **{comment_rate:.1%}** of likes. Add questions or calls-to-action to boost replies."
+                },
+                {
+                    "icon": "🎯",
+                    "title": "Hook First",
+                    "detail": "Start captions with a compelling hook, question, or seasonal tie-in to grab attention."
+                },
+                {
+                    "icon": "📸",
+                    "title": "Visual Consistency",
+                    "detail": f"Top visual elements: **{top_labels_str if top_labels_str else 'N/A'}**. Repeat signature visuals to build brand recognition."
+                },
+                {
+                    "icon": "⏰",
+                    "title": "Timing Matters",
+                    "detail": "Check the Time Analysis page to find your optimal posting windows."
+                }
+            ]
 
-        # Display recommendations in grid
-        rec_cols = st.columns(3)
-        for idx, rec in enumerate(recommendations):
-            with rec_cols[idx % 3]:
-                st.markdown(
-                    f"""<div style="background:#f8f9fa;padding:16px;border-radius:12px;margin-bottom:12px;min-height:160px;">
-                    <div style="font-size:1.5rem;">{rec['icon']}</div>
-                    <div style="font-weight:600;margin:8px 0;color:#2c3e50;">{rec['title']}</div>
+            # Display recommendations in grid
+            rec_cols = st.columns(3)
+            for idx, rec in enumerate(recommendations):
+                with rec_cols[idx % 3]:
+                    st.markdown(
+                        f"""<div style="background:#f8f9fa;padding:16px;border-radius:12px;margin-bottom:12px;min-height:160px;">
+                        <div style="font-size:1.5rem;">{rec['icon']}</div>
+                        <div style="font-weight:600;margin:8px 0;color:#2c3e50;">{rec['title']}</div>
                     <div style="color:#555;font-size:0.9rem;">{rec['detail']}</div>
                     </div>""",
                     unsafe_allow_html=True
                 )
+        else:
+            st.info("No images analyzed yet. Go to **API Settings** to configure Vision API and analyze images to generate recommendations.")
 
         st.markdown("---")
 
