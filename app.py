@@ -1262,6 +1262,233 @@ def render_post_analysis(df: pd.DataFrame):
                     st.write(caption[:500] + "..." if len(str(caption)) > 500 else caption)
                 st.caption(f"❤️ {int(row['likes']):,} likes | 💬 {int(row['comments'])} comments | 📝 {int(row.get('caption_length', 0))} chars | #️⃣ {int(row.get('hashtag_count', 0))} hashtags")
 
+    # --- AI PROMPT GENERATOR TAB ---
+    with tab_ai_prompt:
+        st.subheader("🤖 AI Prompt Generator")
+        st.markdown("Generate creative AI image and video prompts based on your top-performing content")
+
+        st.markdown("---")
+
+        # Prompt Type Selection
+        col_type, col_style = st.columns(2)
+        with col_type:
+            content_type = st.selectbox(
+                "Content Type",
+                ["Image", "Video", "Both"],
+                help="Choose whether to generate prompts for images, videos, or both"
+            )
+        with col_style:
+            style_preference = st.selectbox(
+                "Visual Style",
+                ["Auto (Based on Data)", "Cinematic", "Minimalist", "Vibrant", "Artistic", "Photorealistic", "Illustration"],
+                help="Choose the visual style for generated prompts"
+            )
+
+        st.markdown("---")
+
+        # Analyze top posts to generate insights
+        st.markdown("### 📊 Content Performance Analysis")
+
+        # Get top performing posts
+        top_performers = df_processed.sort_values('total_engagement', ascending=False).head(10)
+
+        # Extract insights from top posts
+        col_insight1, col_insight2, col_insight3 = st.columns(3)
+
+        with col_insight1:
+            st.metric("Avg Engagement (Top 10)", f"{int(top_performers['total_engagement'].mean()):,}")
+        with col_insight2:
+            # Get most common visual elements if Vision API data available
+            if st.session_state.vision_results:
+                all_labels = []
+                for vision_data in st.session_state.vision_results.values():
+                    if vision_data.get('labels'):
+                        all_labels.extend([l.strip() for l in vision_data['labels'].split(',')])
+                if all_labels:
+                    top_element = pd.Series(all_labels).value_counts().index[0]
+                    st.metric("Top Visual Element", top_element)
+                else:
+                    st.metric("Vision Analysis", "Not Available")
+            else:
+                st.metric("Vision Analysis", "Not Available")
+        with col_insight3:
+            avg_caption_top = top_performers['caption_length'].mean()
+            st.metric("Avg Caption Length (Top)", f"{int(avg_caption_top)} chars")
+
+        st.markdown("---")
+
+        # AI Prompt Generation Section
+        st.markdown("### ✨ Generate AI Prompts")
+
+        # Prompt generation mode
+        gen_mode = st.radio(
+            "Generation Mode",
+            ["Auto-Generate from Top Posts", "Custom Parameters"],
+            horizontal=True
+        )
+
+        if gen_mode == "Auto-Generate from Top Posts":
+            st.info("AI prompts will be generated based on your top-performing posts' visual patterns and engagement data")
+
+            num_prompts = st.slider("Number of Prompts to Generate", 1, 10, 3)
+
+            if st.button("🎨 Generate AI Prompts", use_container_width=True, type="primary"):
+                with st.spinner("Analyzing your content and generating prompts..."):
+                    # Generate prompts based on Vision API data and performance metrics
+                    generated_prompts = []
+
+                    # Extract common themes from top posts
+                    common_themes = []
+                    common_colors = []
+                    if st.session_state.vision_results:
+                        for img_file in top_performers['image_file'].head(5):
+                            if img_file in st.session_state.vision_results:
+                                vision_data = st.session_state.vision_results[img_file]
+                                if vision_data.get('labels'):
+                                    common_themes.extend([l.strip() for l in vision_data['labels'].split(',')])
+                                if vision_data.get('dominant_colors'):
+                                    common_colors.extend([c.strip() for c in vision_data['dominant_colors'].split(',')])
+
+                    # Get most common themes
+                    if common_themes:
+                        top_themes = pd.Series(common_themes).value_counts().head(5).index.tolist()
+                    else:
+                        top_themes = ["lifestyle", "product", "aesthetic", "creative"]
+
+                    if common_colors:
+                        top_colors = pd.Series(common_colors).value_counts().head(3).index.tolist()
+                    else:
+                        top_colors = ["warm tones", "vibrant", "natural"]
+
+                    # Generate prompts
+                    for i in range(num_prompts):
+                        if content_type in ["Image", "Both"]:
+                            theme = top_themes[i % len(top_themes)]
+                            color = top_colors[i % len(top_colors)]
+
+                            style_map = {
+                                "Auto (Based on Data)": "",
+                                "Cinematic": ", cinematic lighting, film grain, depth of field",
+                                "Minimalist": ", minimalist design, clean composition, negative space",
+                                "Vibrant": ", vibrant colors, high saturation, energetic",
+                                "Artistic": ", artistic interpretation, creative expression, unique perspective",
+                                "Photorealistic": ", photorealistic, highly detailed, professional photography",
+                                "Illustration": ", digital illustration, stylized, artistic rendering"
+                            }
+
+                            style_suffix = style_map.get(style_preference, "")
+
+                            prompt = f"A stunning {theme} scene featuring {color} color palette{style_suffix}, high quality, professional composition, engaging and eye-catching"
+
+                            generated_prompts.append({
+                                "type": "Image",
+                                "prompt": prompt,
+                                "style": style_preference
+                            })
+
+                        if content_type in ["Video", "Both"] and i < num_prompts:
+                            theme = top_themes[i % len(top_themes)]
+                            video_prompt = f"Dynamic video showcasing {theme}, smooth camera movements, {top_colors[0]} color grading, engaging transitions, 4K quality"
+
+                            generated_prompts.append({
+                                "type": "Video",
+                                "prompt": video_prompt,
+                                "style": style_preference
+                            })
+
+                # Display generated prompts
+                st.success(f"✅ Generated {len(generated_prompts)} AI prompts!")
+
+                for idx, prompt_data in enumerate(generated_prompts, 1):
+                    with st.expander(f"{'🖼️' if prompt_data['type'] == 'Image' else '🎬'} Prompt #{idx} - {prompt_data['type']}", expanded=True):
+                        st.text_area(
+                            "AI Prompt",
+                            prompt_data['prompt'],
+                            height=100,
+                            key=f"prompt_{idx}",
+                            help="Copy this prompt to use in AI image/video generators like Midjourney, DALL-E, Runway, etc."
+                        )
+
+                        col_copy, col_tips = st.columns([1, 2])
+                        with col_copy:
+                            st.code(prompt_data['prompt'], language=None)
+                        with col_tips:
+                            st.caption(f"**Style:** {prompt_data['style']}")
+                            st.caption("**Tools:** Midjourney, DALL-E 3, Stable Diffusion, Runway ML")
+
+        else:  # Custom Parameters mode
+            st.info("Customize your AI prompt generation parameters")
+
+            col_subject, col_mood = st.columns(2)
+            with col_subject:
+                subject = st.text_input("Subject/Theme", placeholder="e.g., coffee cup, sunset, fashion")
+            with col_mood:
+                mood = st.text_input("Mood/Atmosphere", placeholder="e.g., cozy, energetic, elegant")
+
+            col_colors, col_lighting = st.columns(2)
+            with col_colors:
+                colors = st.text_input("Color Palette", placeholder="e.g., warm tones, pastel, monochrome")
+            with col_lighting:
+                lighting = st.text_input("Lighting", placeholder="e.g., golden hour, soft, dramatic")
+
+            additional_details = st.text_area(
+                "Additional Details (Optional)",
+                placeholder="Add any specific elements, composition notes, or special requirements...",
+                height=100
+            )
+
+            if st.button("🎨 Generate Custom Prompt", use_container_width=True, type="primary"):
+                if subject:
+                    style_suffix = {
+                        "Auto (Based on Data)": "",
+                        "Cinematic": ", cinematic composition, film-like quality",
+                        "Minimalist": ", minimalist aesthetic, clean and simple",
+                        "Vibrant": ", vibrant and bold colors, high energy",
+                        "Artistic": ", artistic and creative interpretation",
+                        "Photorealistic": ", photorealistic details, high resolution",
+                        "Illustration": ", illustrated style, digital art"
+                    }.get(style_preference, "")
+
+                    custom_prompt = f"{subject}"
+                    if mood:
+                        custom_prompt += f", {mood} atmosphere"
+                    if colors:
+                        custom_prompt += f", {colors} color palette"
+                    if lighting:
+                        custom_prompt += f", {lighting} lighting"
+                    custom_prompt += style_suffix
+                    if additional_details:
+                        custom_prompt += f", {additional_details}"
+                    custom_prompt += ", high quality, professional"
+
+                    st.success("✅ Custom prompt generated!")
+                    with st.expander(f"{'🖼️' if content_type == 'Image' else '🎬'} Your Custom Prompt", expanded=True):
+                        st.text_area("AI Prompt", custom_prompt, height=120, key="custom_prompt_display")
+                        st.code(custom_prompt, language=None)
+                        st.caption("**Recommended Tools:** Midjourney, DALL-E 3, Stable Diffusion, Leonardo.AI")
+                else:
+                    st.warning("Please enter at least a subject/theme to generate a custom prompt")
+
+        st.markdown("---")
+
+        # Tips and best practices
+        with st.expander("💡 Tips for Using AI-Generated Prompts"):
+            st.markdown("""
+            **Best Practices:**
+            - Use generated prompts as a starting point - feel free to customize further
+            - Test prompts across different AI platforms (Midjourney, DALL-E, etc.) for varied results
+            - Combine elements from multiple prompts for unique creations
+            - Add specific brand colors or elements to maintain consistency
+            - Iterate on prompts that generate high-engagement content
+
+            **Popular AI Tools:**
+            - **Images:** Midjourney, DALL-E 3, Stable Diffusion, Leonardo.AI
+            - **Videos:** Runway ML, Pika Labs, Synthesia, D-ID
+            - **Enhancement:** Topaz AI, Magnific AI, Krea.ai
+
+            **Pro Tip:** Track which AI-generated content performs best and use those insights to refine future prompts!
+            """)
+
     # --- API SETTINGS TAB ---
     with tab_api:
         st.subheader("Google Vision API Settings")
@@ -1428,8 +1655,8 @@ def main():
         render_engagement_analysis(df)
     elif page == "Time Analysis":
         render_time_analysis(df)
-    elif page == "Image Analysis":
-        render_image_analysis(df)
+    elif page == "Post Analysis":
+        render_post_analysis(df)
 
 
 if __name__ == "__main__":
