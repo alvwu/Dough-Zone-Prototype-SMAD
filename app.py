@@ -1062,39 +1062,52 @@ def render_image_analysis(df: pd.DataFrame):
 
         has_credentials = st.session_state.credentials_valid and st.session_state.vision_credentials
 
-        if has_credentials:
-            # Count images
-            available_images = [f for f in IMAGE_DIR.iterdir() if f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif']] if IMAGE_DIR.exists() else []
-            analyzed_count = len(st.session_state.vision_results)
+        # Count images and show cache info
+        available_images = [f for f in IMAGE_DIR.iterdir() if f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif']] if IMAGE_DIR.exists() else []
+        analyzed_count = len(st.session_state.vision_results)
 
-            st.write(f"Found {len(available_images)} images | {analyzed_count} already analyzed")
+        st.write(f"Found {len(available_images)} images | {analyzed_count} already analyzed")
 
-            if st.button("🔄 Analyze All Unprocessed Images", use_container_width=True):
-                unprocessed = [img for img in available_images if img.name not in st.session_state.vision_results]
-
-                if not unprocessed:
-                    st.info("All images have already been analyzed!")
-                else:
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-
-                    for i, image_path in enumerate(unprocessed):
-                        status_text.text(f"Analyzing {image_path.name}...")
-                        try:
-                            result = analyze_image_with_vision_api(
-                                str(image_path),
-                                credentials_dict=st.session_state.vision_credentials
-                            )
-                            st.session_state.vision_results[image_path.name] = result
-                        except Exception as e:
-                            st.warning(f"Failed to analyze {image_path.name}: {str(e)}")
-
-                        progress_bar.progress((i + 1) / len(unprocessed))
-
-                    save_vision_cache(st.session_state.vision_results)
-                    status_text.text("Done!")
-                    st.success(f"Analyzed {len(unprocessed)} images!")
+        # Clear Vision Cache button
+        if analyzed_count > 0:
+            col_analyze, col_clear = st.columns(2)
+            with col_clear:
+                if st.button("🗑️ Clear Vision Cache", use_container_width=True):
+                    st.session_state.vision_results = {}
+                    clear_vision_cache()
+                    st.info("Vision cache cleared")
                     st.rerun()
+        else:
+            col_analyze = st.container()
+
+        if has_credentials:
+            with col_analyze if analyzed_count > 0 else st.container():
+                if st.button("🔄 Analyze All Unprocessed Images", use_container_width=True):
+                    unprocessed = [img for img in available_images if img.name not in st.session_state.vision_results]
+
+                    if not unprocessed:
+                        st.info("All images have already been analyzed!")
+                    else:
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+
+                        for i, image_path in enumerate(unprocessed):
+                            status_text.text(f"Analyzing {image_path.name}...")
+                            try:
+                                result = analyze_image_with_vision_api(
+                                    str(image_path),
+                                    credentials_dict=st.session_state.vision_credentials
+                                )
+                                st.session_state.vision_results[image_path.name] = result
+                            except Exception as e:
+                                st.warning(f"Failed to analyze {image_path.name}: {str(e)}")
+
+                            progress_bar.progress((i + 1) / len(unprocessed))
+
+                        save_vision_cache(st.session_state.vision_results)
+                        status_text.text("Done!")
+                        st.success(f"Analyzed {len(unprocessed)} images!")
+                        st.rerun()
         else:
             st.info("Configure and validate your credentials above to enable batch analysis.")
 
