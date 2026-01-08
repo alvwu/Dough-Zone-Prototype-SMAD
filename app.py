@@ -39,6 +39,7 @@ st.set_page_config(
 IMAGE_DIR = Path(__file__).parent / "image"
 CREDENTIALS_FILE = Path(__file__).parent / ".vision_credentials.json"
 VISION_CACHE_FILE = Path(__file__).parent / ".vision_cache.json"
+GEMINI_KEY_FILE = Path(__file__).parent / ".gemini_key.txt"
 
 # Warm orange color palette for charts
 CHART_COLORS = {
@@ -283,6 +284,29 @@ def clear_vision_cache():
         VISION_CACHE_FILE.unlink()
 
 
+def load_gemini_key():
+    """Load Gemini API key from file if exists."""
+    if GEMINI_KEY_FILE.exists():
+        try:
+            with open(GEMINI_KEY_FILE, 'r') as f:
+                return f.read().strip()
+        except:
+            return None
+    return None
+
+
+def save_gemini_key(api_key: str):
+    """Save Gemini API key to file."""
+    with open(GEMINI_KEY_FILE, 'w') as f:
+        f.write(api_key)
+
+
+def clear_gemini_key():
+    """Remove saved Gemini API key file."""
+    if GEMINI_KEY_FILE.exists():
+        GEMINI_KEY_FILE.unlink()
+
+
 def init_session_state():
     """Initialize session state variables."""
     if 'db_initialized' not in st.session_state:
@@ -300,6 +324,12 @@ def init_session_state():
     # Load vision results from cache if not in session
     if 'vision_results' not in st.session_state:
         st.session_state.vision_results = load_vision_cache()
+
+    # Initialize Gemini API key
+    if 'gemini_api_key' not in st.session_state:
+        saved_gemini_key = load_gemini_key()
+        st.session_state.gemini_api_key = saved_gemini_key
+        st.session_state.gemini_enabled = saved_gemini_key is not None
 
 
 def load_data():
