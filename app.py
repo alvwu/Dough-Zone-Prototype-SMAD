@@ -40,6 +40,176 @@ CREDENTIALS_FILE = Path(__file__).parent / ".vision_credentials.json"
 VISION_CACHE_FILE = Path(__file__).parent / ".vision_cache.json"
 
 
+def load_css():
+    """Load custom CSS styling with warm orange theme."""
+    st.markdown(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Space+Grotesk:wght@400;500;600&display=swap');
+        html, body, [class*="css"]  {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        .app-hero {
+            background: linear-gradient(120deg, #f4c095 0%, #f9e2c7 45%, #d9c2b3 100%);
+            padding: 30px 28px;
+            border-radius: 22px;
+            box-shadow: 0 20px 45px rgba(34, 24, 16, 0.2);
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        .app-hero:before, .app-hero:after {
+            content: '';
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.35;
+            filter: blur(0px);
+        }
+        .app-hero:before {
+            width: 220px;
+            height: 220px;
+            background: #b65532;
+            top: -80px;
+            right: -40px;
+        }
+        .app-hero:after {
+            width: 160px;
+            height: 160px;
+            background: #f2a65a;
+            bottom: -60px;
+            left: -40px;
+        }
+        .hero-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.2rem;
+            margin: 0 0 6px 0;
+            color: #2d1b12;
+        }
+        .hero-subtitle {
+            margin: 0;
+            color: #4a2d1e;
+            font-weight: 500;
+        }
+        .kpi-card {
+            background: #fff8f0;
+            padding: 16px 18px;
+            border-radius: 16px;
+            border: 1px solid rgba(68, 39, 24, 0.15);
+            box-shadow: 0 10px 25px rgba(32, 18, 10, 0.08);
+        }
+        .kpi-label {
+            font-size: 0.85rem;
+            color: #6b4b3e;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .kpi-value {
+            font-size: 1.7rem;
+            font-weight: 600;
+            color: #2d1b12;
+        }
+        .kpi-delta {
+            font-size: 0.85rem;
+            color: #9b3d20;
+        }
+        .section-card {
+            background: #fff;
+            padding: 18px 20px;
+            border-radius: 18px;
+            border: 1px solid rgba(70, 40, 25, 0.12);
+            box-shadow: 0 10px 20px rgba(32, 18, 10, 0.06);
+        }
+        .tag-pill {
+            display: inline-block;
+            margin: 4px 6px 0 0;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: #f8d8b0;
+            color: #5b3b2c;
+            font-size: 0.8rem;
+        }
+        .rec-card {
+            background: #fff6ec;
+            border-radius: 18px;
+            padding: 16px 18px;
+            border: 1px solid rgba(70, 40, 25, 0.12);
+            box-shadow: 0 12px 24px rgba(32, 18, 10, 0.08);
+            min-height: 150px;
+        }
+        .rec-icon {
+            font-size: 1.6rem;
+        }
+        .rec-title {
+            font-weight: 600;
+            margin: 6px 0 6px 0;
+            color: #2d1b12;
+        }
+        .rec-detail {
+            color: #5a3a2b;
+            font-size: 0.92rem;
+        }
+        /* Sidebar styling */
+        [data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #fff8f0 0%, #f9e2c7 100%);
+        }
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+            color: #2d1b12;
+        }
+        /* Tab styling */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 8px;
+        }
+        .stTabs [data-baseweb="tab"] {
+            background: #fff8f0;
+            border-radius: 12px 12px 0 0;
+            border: 1px solid rgba(68, 39, 24, 0.15);
+            border-bottom: none;
+            color: #5b3b2c;
+        }
+        .stTabs [aria-selected="true"] {
+            background: #f4c095;
+            color: #2d1b12;
+            font-weight: 600;
+        }
+        /* Metric cards */
+        [data-testid="stMetric"] {
+            background: #fff8f0;
+            padding: 16px;
+            border-radius: 16px;
+            border: 1px solid rgba(68, 39, 24, 0.15);
+            box-shadow: 0 8px 20px rgba(32, 18, 10, 0.06);
+        }
+        [data-testid="stMetricLabel"] {
+            color: #6b4b3e;
+        }
+        [data-testid="stMetricValue"] {
+            color: #2d1b12;
+        }
+        /* Buttons */
+        .stButton > button {
+            background: linear-gradient(135deg, #f4c095 0%, #e8a66d 100%);
+            color: #2d1b12;
+            border: none;
+            border-radius: 12px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        .stButton > button:hover {
+            background: linear-gradient(135deg, #e8a66d 0%, #d4925c 100%);
+            box-shadow: 0 6px 15px rgba(180, 100, 50, 0.3);
+        }
+        /* Info boxes */
+        .stAlert {
+            background: #fff8f0;
+            border: 1px solid rgba(68, 39, 24, 0.15);
+            border-radius: 12px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def load_saved_credentials():
     """Load credentials from file if exists."""
     if CREDENTIALS_FILE.exists():
@@ -609,11 +779,31 @@ def render_image_analysis(df: pd.DataFrame):
         if 'selected_explorer_post' not in st.session_state:
             st.session_state.selected_explorer_post = df_processed.iloc[0]['shortcode']
 
-        # Sort thumbnails by engagement (highest first)
-        df_sorted = df_processed.sort_values('total_engagement', ascending=False)
+        # Sort options for thumbnails
+        col_title, col_sort = st.columns([3, 1])
+        with col_title:
+            st.markdown("#### Select a Post")
+        with col_sort:
+            sort_options = {
+                "Engagement": "total_engagement",
+                "Likes": "likes",
+                "Comments": "comments",
+                "Date": "posting_date"
+            }
+            sort_choice = st.selectbox(
+                "Sort by",
+                options=list(sort_options.keys()),
+                index=0,
+                key="explorer_sort",
+                label_visibility="collapsed"
+            )
+
+        # Sort thumbnails based on selection
+        sort_col = sort_options[sort_choice]
+        ascending = True if sort_choice == "Date" else False
+        df_sorted = df_processed.sort_values(sort_col, ascending=ascending)
 
         # Thumbnail grid (6 columns for compact view)
-        st.markdown("#### Select a Post")
         thumb_cols = st.columns(6)
         for idx, (_, row) in enumerate(df_sorted.iterrows()):
             with thumb_cols[idx % 6]:
@@ -908,13 +1098,13 @@ def render_image_analysis(df: pd.DataFrame):
             for idx, rec in enumerate(recommendations):
                 with rec_cols[idx % 3]:
                     st.markdown(
-                        f"""<div style="background:#f8f9fa;padding:16px;border-radius:12px;margin-bottom:12px;min-height:160px;">
-                        <div style="font-size:1.5rem;">{rec['icon']}</div>
-                        <div style="font-weight:600;margin:8px 0;color:#2c3e50;">{rec['title']}</div>
-                    <div style="color:#555;font-size:0.9rem;">{rec['detail']}</div>
-                    </div>""",
-                    unsafe_allow_html=True
-                )
+                        f"""<div class="rec-card">
+                        <div class="rec-icon">{rec['icon']}</div>
+                        <div class="rec-title">{rec['title']}</div>
+                        <div class="rec-detail">{rec['detail']}</div>
+                        </div>""",
+                        unsafe_allow_html=True
+                    )
         else:
             st.info("No images analyzed yet. Go to **API Settings** to configure Vision API and analyze images to generate recommendations.")
 
@@ -1120,6 +1310,7 @@ def render_image_analysis(df: pd.DataFrame):
 
 def main():
     """Main application entry point."""
+    load_css()
     init_session_state()
 
     # Load data
