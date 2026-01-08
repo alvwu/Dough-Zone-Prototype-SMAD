@@ -787,7 +787,7 @@ def generate_prompts_with_gemini(top_performers, vision_results, content_type, s
 
         # Configure Gemini
         genai.configure(api_key=st.session_state.gemini_api_key)
-        model = genai.GenerativeModel('models/gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-1.5-flash')
 
         # Extract data for context
         common_themes = []
@@ -1638,239 +1638,240 @@ def render_post_analysis(df: pd.DataFrame):
 
     # --- API SETTINGS TAB ---
     with tab_api:
-        st.subheader("Google Vision API Settings")
-        st.markdown("Configure your Google Cloud Vision API credentials to enable automatic image analysis.")
-
+        st.markdown("### API Configuration")
+        st.markdown("Manage your Google Cloud Vision and Gemini AI API settings")
         st.markdown("---")
 
-        # JSON Credentials upload
-        st.markdown("### Upload Service Account JSON")
-        uploaded_file = st.file_uploader(
-            "Drop your service account JSON file here",
-            type=['json'],
-            help="Upload the JSON key file from your Google Cloud service account"
-        )
-
-        if uploaded_file is not None:
-            try:
-                import json
-                credentials_content = uploaded_file.read().decode('utf-8')
-                credentials_dict = json.loads(credentials_content)
-
-                # Validate required fields
-                required_fields = ['private_key', 'client_email', 'project_id']
-                missing_fields = [f for f in required_fields if f not in credentials_dict]
-
-                if missing_fields:
-                    st.error(f"Invalid credentials file. Missing fields: {', '.join(missing_fields)}")
-                else:
-                    st.success(f"Credentials loaded for project: **{credentials_dict.get('project_id')}**")
-                    st.info(f"Service account: {credentials_dict.get('client_email')}")
-
-                    if st.button("💾 Save Credentials", use_container_width=True):
-                        st.session_state.vision_credentials = credentials_dict
-                        save_credentials(credentials_dict)  # Save to file
-                        with st.spinner("Validating credentials..."):
-                            try:
-                                is_valid = validate_credentials(credentials_dict)
-                                st.session_state.credentials_valid = is_valid
-                                if is_valid:
-                                    st.success("Credentials saved and validated successfully!")
-                                else:
-                                    st.warning("Credentials saved but could not be validated.")
-                            except Exception as e:
-                                st.session_state.credentials_valid = False
-                                st.warning(f"Credentials saved. Validation skipped: {str(e)}")
-                                st.session_state.credentials_valid = True  # Allow usage anyway
-                        st.rerun()
-
-            except json.JSONDecodeError:
-                st.error("Invalid JSON file. Please upload a valid service account JSON file.")
-            except Exception as e:
-                st.error(f"Error reading file: {str(e)}")
-
-        # Current status
-        if st.session_state.vision_credentials:
+        # Google Vision API Settings - Collapsible
+        with st.expander("🔍 Google Vision API Settings", expanded=False):
+            st.markdown("Configure your Google Cloud Vision API credentials to enable automatic image analysis.")
             st.markdown("---")
-            st.markdown("### Current Status")
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.session_state.credentials_valid:
-                    st.success(f"✅ Connected: {st.session_state.vision_credentials.get('client_email', 'Unknown')}")
-                else:
-                    st.warning(f"⚠️ Credentials loaded: {st.session_state.vision_credentials.get('client_email', 'Unknown')}")
-            with col2:
-                if st.button("🗑️ Clear Credentials", use_container_width=True):
-                    st.session_state.vision_credentials = None
-                    st.session_state.credentials_valid = False
-                    st.session_state.vision_results = {}
-                    clear_saved_credentials()
-                    clear_vision_cache()
-                    st.info("Credentials cleared")
-                    st.rerun()
 
-        st.markdown("---")
-        st.markdown("""
-        ### How to Get Service Account JSON
-        1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-        2. Create a new project or select an existing one
-        3. Enable the **Cloud Vision API**
-        4. Go to **IAM & Admin** → **Service Accounts**
-        5. Click **Create Service Account**
-        6. Give it a name and click **Create**
-        7. Grant the role **Cloud Vision API User**
-        8. Click **Done**, then click on the service account
-        9. Go to **Keys** → **Add Key** → **Create new key** → **JSON**
-        10. Upload the downloaded JSON file above
-        """)
+            # JSON Credentials upload
+            st.markdown("### Upload Service Account JSON")
+            uploaded_file = st.file_uploader(
+                "Drop your service account JSON file here",
+                type=['json'],
+                help="Upload the JSON key file from your Google Cloud service account"
+            )
 
-        st.markdown("---")
-        st.markdown("**Note:** Credentials are saved locally and will persist until you clear them or restart the app.")
-        st.markdown("**Cost:** Google Vision API offers 1,000 free requests per month.")
+            if uploaded_file is not None:
+                try:
+                    import json
+                    credentials_content = uploaded_file.read().decode('utf-8')
+                    credentials_dict = json.loads(credentials_content)
 
-        # Batch analyze section
-        st.markdown("---")
-        st.subheader("Batch Analyze All Images")
+                    # Validate required fields
+                    required_fields = ['private_key', 'client_email', 'project_id']
+                    missing_fields = [f for f in required_fields if f not in credentials_dict]
 
-        has_credentials = st.session_state.credentials_valid and st.session_state.vision_credentials
-
-        # Count images and show cache info
-        available_images = [f for f in IMAGE_DIR.iterdir() if f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif']] if IMAGE_DIR.exists() else []
-        analyzed_count = len(st.session_state.vision_results)
-
-        st.write(f"Found {len(available_images)} images | {analyzed_count} already analyzed")
-
-        # Clear Vision Cache button
-        if analyzed_count > 0:
-            col_analyze, col_clear = st.columns(2)
-            with col_clear:
-                if st.button("🗑️ Clear Vision Cache", use_container_width=True):
-                    st.session_state.vision_results = {}
-                    clear_vision_cache()
-                    st.info("Vision cache cleared")
-                    st.rerun()
-        else:
-            col_analyze = st.container()
-
-        if has_credentials:
-            with col_analyze if analyzed_count > 0 else st.container():
-                if st.button("🔄 Analyze All Unprocessed Images", use_container_width=True):
-                    unprocessed = [img for img in available_images if img.name not in st.session_state.vision_results]
-
-                    if not unprocessed:
-                        st.info("All images have already been analyzed!")
+                    if missing_fields:
+                        st.error(f"Invalid credentials file. Missing fields: {', '.join(missing_fields)}")
                     else:
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
+                        st.success(f"Credentials loaded for project: **{credentials_dict.get('project_id')}**")
+                        st.info(f"Service account: {credentials_dict.get('client_email')}")
 
-                        for i, image_path in enumerate(unprocessed):
-                            status_text.text(f"Analyzing {image_path.name}...")
-                            try:
-                                result = analyze_image_with_vision_api(
-                                    str(image_path),
-                                    credentials_dict=st.session_state.vision_credentials
-                                )
-                                st.session_state.vision_results[image_path.name] = result
-                            except Exception as e:
-                                st.warning(f"Failed to analyze {image_path.name}: {str(e)}")
+                        if st.button("💾 Save Credentials", use_container_width=True):
+                            st.session_state.vision_credentials = credentials_dict
+                            save_credentials(credentials_dict)  # Save to file
+                            with st.spinner("Validating credentials..."):
+                                try:
+                                    is_valid = validate_credentials(credentials_dict)
+                                    st.session_state.credentials_valid = is_valid
+                                    if is_valid:
+                                        st.success("Credentials saved and validated successfully!")
+                                    else:
+                                        st.warning("Credentials saved but could not be validated.")
+                                except Exception as e:
+                                    st.session_state.credentials_valid = False
+                                    st.warning(f"Credentials saved. Validation skipped: {str(e)}")
+                                    st.session_state.credentials_valid = True  # Allow usage anyway
+                            st.rerun()
 
-                            progress_bar.progress((i + 1) / len(unprocessed))
+                except json.JSONDecodeError:
+                    st.error("Invalid JSON file. Please upload a valid service account JSON file.")
+                except Exception as e:
+                    st.error(f"Error reading file: {str(e)}")
 
-                        save_vision_cache(st.session_state.vision_results)
-                        status_text.text("Done!")
-                        st.success(f"Analyzed {len(unprocessed)} images!")
+            # Current status
+            if st.session_state.vision_credentials:
+                st.markdown("---")
+                st.markdown("### Current Status")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.session_state.credentials_valid:
+                        st.success(f"✅ Connected: {st.session_state.vision_credentials.get('client_email', 'Unknown')}")
+                    else:
+                        st.warning(f"⚠️ Credentials loaded: {st.session_state.vision_credentials.get('client_email', 'Unknown')}")
+                with col2:
+                    if st.button("🗑️ Clear Credentials", use_container_width=True):
+                        st.session_state.vision_credentials = None
+                        st.session_state.credentials_valid = False
+                        st.session_state.vision_results = {}
+                        clear_saved_credentials()
+                        clear_vision_cache()
+                        st.info("Credentials cleared")
                         st.rerun()
-        else:
-            st.info("Configure and validate your credentials above to enable batch analysis.")
+
+            st.markdown("---")
+            st.markdown("""
+            ### How to Get Service Account JSON
+            1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+            2. Create a new project or select an existing one
+            3. Enable the **Cloud Vision API**
+            4. Go to **IAM & Admin** → **Service Accounts**
+            5. Click **Create Service Account**
+            6. Give it a name and click **Create**
+            7. Grant the role **Cloud Vision API User**
+            8. Click **Done**, then click on the service account
+            9. Go to **Keys** → **Add Key** → **Create new key** → **JSON**
+            10. Upload the downloaded JSON file above
+            """)
+
+            st.markdown("---")
+            st.markdown("**Note:** Credentials are saved locally and will persist until you clear them or restart the app.")
+            st.markdown("**Cost:** Google Vision API offers 1,000 free requests per month.")
+
+            # Batch analyze section
+            st.markdown("---")
+            st.subheader("Batch Analyze All Images")
+
+            has_credentials = st.session_state.credentials_valid and st.session_state.vision_credentials
+
+            # Count images and show cache info
+            available_images = [f for f in IMAGE_DIR.iterdir() if f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif']] if IMAGE_DIR.exists() else []
+            analyzed_count = len(st.session_state.vision_results)
+
+            st.write(f"Found {len(available_images)} images | {analyzed_count} already analyzed")
+
+            # Clear Vision Cache button
+            if analyzed_count > 0:
+                col_analyze, col_clear = st.columns(2)
+                with col_clear:
+                    if st.button("🗑️ Clear Vision Cache", use_container_width=True):
+                        st.session_state.vision_results = {}
+                        clear_vision_cache()
+                        st.info("Vision cache cleared")
+                        st.rerun()
+            else:
+                col_analyze = st.container()
+
+            if has_credentials:
+                with col_analyze if analyzed_count > 0 else st.container():
+                    if st.button("🔄 Analyze All Unprocessed Images", use_container_width=True):
+                        unprocessed = [img for img in available_images if img.name not in st.session_state.vision_results]
+
+                        if not unprocessed:
+                            st.info("All images have already been analyzed!")
+                        else:
+                            progress_bar = st.progress(0)
+                            status_text = st.empty()
+
+                            for i, image_path in enumerate(unprocessed):
+                                status_text.text(f"Analyzing {image_path.name}...")
+                                try:
+                                    result = analyze_image_with_vision_api(
+                                        str(image_path),
+                                        credentials_dict=st.session_state.vision_credentials
+                                    )
+                                    st.session_state.vision_results[image_path.name] = result
+                                except Exception as e:
+                                    st.warning(f"Failed to analyze {image_path.name}: {str(e)}")
+
+                                progress_bar.progress((i + 1) / len(unprocessed))
+
+                            save_vision_cache(st.session_state.vision_results)
+                            status_text.text("Done!")
+                            st.success(f"Analyzed {len(unprocessed)} images!")
+                            st.rerun()
+            else:
+                st.info("Configure and validate your credentials above to enable batch analysis.")
 
         # --- GEMINI API SETTINGS SECTION ---
-        st.markdown("---")
-        st.markdown("---")
-        st.subheader("🤖 Gemini AI API Settings")
-        st.markdown("Configure your Google Gemini API key to enable AI-powered prompt generation.")
-
-        st.markdown("---")
-
-        # Gemini API Key Input
-        st.markdown("### Enter Gemini API Key")
-
-        gemini_key_input = st.text_input(
-            "API Key",
-            value=st.session_state.gemini_api_key if st.session_state.gemini_api_key else "",
-            type="password",
-            help="Your Gemini API key from Google AI Studio",
-            placeholder="AIzaSy..."
-        )
-
-        col_save_gemini, col_test_gemini = st.columns(2)
-
-        with col_save_gemini:
-            if st.button("💾 Save Gemini API Key", use_container_width=True):
-                if gemini_key_input and len(gemini_key_input) > 20:
-                    st.session_state.gemini_api_key = gemini_key_input
-                    save_gemini_key(gemini_key_input)
-                    st.session_state.gemini_enabled = True
-                    st.success("Gemini API key saved successfully!")
-                    st.rerun()
-                else:
-                    st.error("Please enter a valid API key")
-
-        with col_test_gemini:
-            if st.button("🧪 Test Connection", use_container_width=True):
-                if st.session_state.gemini_api_key:
-                    with st.spinner("Testing Gemini API connection..."):
-                        try:
-                            import google.generativeai as genai
-                            genai.configure(api_key=st.session_state.gemini_api_key)
-                            model = genai.GenerativeModel('models/gemini-1.5-flash')
-                            response = model.generate_content("Say 'API connection successful!' in exactly 3 words.")
-                            st.success(f"✅ Connection successful! Response: {response.text[:50]}")
-                            st.session_state.gemini_enabled = True
-                        except Exception as e:
-                            st.error(f"❌ Connection failed: {str(e)}")
-                            st.session_state.gemini_enabled = False
-                else:
-                    st.warning("Please enter and save an API key first")
-
-        # Current Gemini Status
-        if st.session_state.gemini_api_key:
+        with st.expander("🤖 Gemini AI API Settings", expanded=False):
+            st.markdown("Configure your Google Gemini API key to enable AI-powered prompt generation.")
             st.markdown("---")
-            st.markdown("### Current Status")
-            col_status, col_clear = st.columns(2)
 
-            with col_status:
-                if st.session_state.gemini_enabled:
-                    masked_key = st.session_state.gemini_api_key[:10] + "..." + st.session_state.gemini_api_key[-4:]
-                    st.success(f"✅ Gemini AI Enabled: {masked_key}")
-                else:
-                    st.warning("⚠️ API key saved but not tested")
+            # Gemini API Key Input
+            st.markdown("### Enter Gemini API Key")
 
-            with col_clear:
-                if st.button("🗑️ Clear Gemini Key", use_container_width=True):
-                    st.session_state.gemini_api_key = None
-                    st.session_state.gemini_enabled = False
-                    clear_gemini_key()
-                    st.info("Gemini API key cleared")
-                    st.rerun()
+            gemini_key_input = st.text_input(
+                "API Key",
+                value=st.session_state.gemini_api_key if st.session_state.gemini_api_key else "",
+                type="password",
+                help="Your Gemini API key from Google AI Studio",
+                placeholder="AIzaSy..."
+            )
 
-        st.markdown("---")
-        st.markdown("""
-        ### How to Get Gemini API Key
-        1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
-        2. Sign in with your Google account
-        3. Click **"Get API key"** or **"Create API key"**
-        4. Select **"Create API key in new project"**
-        5. Copy the generated API key (starts with `AIzaSy...`)
-        6. Paste it above and click **"Save Gemini API Key"**
+            col_save_gemini, col_test_gemini = st.columns(2)
 
-        **Free Tier:**
-        - 60 requests per minute
-        - 1,500 requests per day
-        - Perfect for generating creative prompts!
-        """)
+            with col_save_gemini:
+                if st.button("💾 Save Gemini API Key", use_container_width=True):
+                    if gemini_key_input and len(gemini_key_input) > 20:
+                        st.session_state.gemini_api_key = gemini_key_input
+                        save_gemini_key(gemini_key_input)
+                        st.session_state.gemini_enabled = True
+                        st.success("Gemini API key saved successfully!")
+                        st.rerun()
+                    else:
+                        st.error("Please enter a valid API key")
 
-        st.markdown("---")
-        st.info("**Note:** Gemini API key is saved locally and will persist until cleared.")
+            with col_test_gemini:
+                if st.button("🧪 Test Connection", use_container_width=True):
+                    if st.session_state.gemini_api_key:
+                        with st.spinner("Testing Gemini API connection..."):
+                            try:
+                                import google.generativeai as genai
+                                genai.configure(api_key=st.session_state.gemini_api_key)
+                                model = genai.GenerativeModel('gemini-1.5-flash')
+                                response = model.generate_content("Say 'API connection successful!' in exactly 3 words.")
+                                st.success(f"✅ Connection successful! Response: {response.text[:50]}")
+                                st.session_state.gemini_enabled = True
+                            except Exception as e:
+                                st.error(f"❌ Connection failed: {str(e)}")
+                                st.session_state.gemini_enabled = False
+                    else:
+                        st.warning("Please enter and save an API key first")
+
+            # Current Gemini Status
+            if st.session_state.gemini_api_key:
+                st.markdown("---")
+                st.markdown("### Current Status")
+                col_status, col_clear = st.columns(2)
+
+                with col_status:
+                    if st.session_state.gemini_enabled:
+                        masked_key = st.session_state.gemini_api_key[:10] + "..." + st.session_state.gemini_api_key[-4:]
+                        st.success(f"✅ Gemini AI Enabled: {masked_key}")
+                    else:
+                        st.warning("⚠️ API key saved but not tested")
+
+                with col_clear:
+                    if st.button("🗑️ Clear Gemini Key", use_container_width=True):
+                        st.session_state.gemini_api_key = None
+                        st.session_state.gemini_enabled = False
+                        clear_gemini_key()
+                        st.info("Gemini API key cleared")
+                        st.rerun()
+
+            st.markdown("---")
+            st.markdown("""
+            ### How to Get Gemini API Key
+            1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
+            2. Sign in with your Google account
+            3. Click **"Get API key"** or **"Create API key"**
+            4. Select **"Create API key in new project"**
+            5. Copy the generated API key (starts with `AIzaSy...`)
+            6. Paste it above and click **"Save Gemini API Key"**
+
+            **Free Tier:**
+            - 60 requests per minute
+            - 1,500 requests per day
+            - Perfect for generating creative prompts!
+            """)
+
+            st.markdown("---")
+            st.info("**Note:** Gemini API key is saved locally and will persist until cleared.")
 
 
 def main():
