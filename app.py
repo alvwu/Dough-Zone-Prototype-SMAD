@@ -26,6 +26,13 @@ from data_processing import (
     create_summary_statistics
 )
 from vision_api import analyze_image_with_vision_api, validate_credentials
+from imagen_api import (
+    generate_image_with_imagen,
+    validate_imagen_credentials,
+    test_imagen_connection,
+    save_generated_image,
+    estimate_imagen_cost
+)
 
 # Page configuration
 st.set_page_config(
@@ -37,9 +44,11 @@ st.set_page_config(
 
 # Image directory
 IMAGE_DIR = Path(__file__).parent / "image"
+GENERATED_IMAGES_DIR = Path(__file__).parent / "generated_images"
 CREDENTIALS_FILE = Path(__file__).parent / ".vision_credentials.json"
 VISION_CACHE_FILE = Path(__file__).parent / ".vision_cache.json"
 GEMINI_KEY_FILE = Path(__file__).parent / ".gemini_key.txt"
+IMAGEN_CREDENTIALS_FILE = Path(__file__).parent / ".imagen_credentials.json"
 
 # Warm orange color palette for charts
 CHART_COLORS = {
@@ -307,6 +316,31 @@ def clear_gemini_key():
         GEMINI_KEY_FILE.unlink()
 
 
+def load_imagen_credentials():
+    """Load Imagen credentials from file if exists."""
+    if IMAGEN_CREDENTIALS_FILE.exists():
+        try:
+            import json
+            with open(IMAGEN_CREDENTIALS_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return None
+    return None
+
+
+def save_imagen_credentials(credentials_dict: dict):
+    """Save Imagen credentials to file."""
+    import json
+    with open(IMAGEN_CREDENTIALS_FILE, 'w') as f:
+        json.dump(credentials_dict, f)
+
+
+def clear_imagen_credentials():
+    """Remove saved Imagen credentials file."""
+    if IMAGEN_CREDENTIALS_FILE.exists():
+        IMAGEN_CREDENTIALS_FILE.unlink()
+
+
 def init_session_state():
     """Initialize session state variables."""
     if 'db_initialized' not in st.session_state:
@@ -330,6 +364,15 @@ def init_session_state():
         saved_gemini_key = load_gemini_key()
         st.session_state.gemini_api_key = saved_gemini_key
         st.session_state.gemini_enabled = saved_gemini_key is not None
+
+    # Initialize Imagen credentials
+    if 'imagen_credentials' not in st.session_state:
+        saved_imagen_creds = load_imagen_credentials()
+        st.session_state.imagen_credentials = saved_imagen_creds
+        st.session_state.imagen_enabled = saved_imagen_creds is not None
+
+    if 'generated_images' not in st.session_state:
+        st.session_state.generated_images = []
 
 
 def load_data():
@@ -1571,6 +1614,65 @@ def render_post_analysis(df: pd.DataFrame):
                             st.caption(f"**Style:** {prompt_data['style']}")
                             st.caption("**Tools:** Midjourney, DALL-E 3, Stable Diffusion, Runway ML")
 
+                        # Imagen 2 generation option (only for images)
+                        if prompt_data['type'] == 'Image' and st.session_state.imagen_enabled:
+                            st.markdown("---")
+                            col_gen, col_settings = st.columns([1, 1])
+
+                            with col_settings:
+                                aspect_ratio = st.selectbox(
+                                    "Aspect Ratio",
+                                    ["1:1", "9:16", "16:9", "4:3", "3:4"],
+                                    key=f"aspect_{idx}",
+                                    help="Image dimensions"
+                                )
+
+                            with col_gen:
+                                if st.button(f"🎨 Generate with Imagen 2", key=f"gen_imagen_{idx}", use_container_width=True, type="primary"):
+                                    with st.spinner("Generating image with Imagen 2..."):
+                                        try:
+                                            # Create output directory
+                                            GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
+
+                                            # Generate image
+                                            result = generate_image_with_imagen(
+                                                prompt=prompt_data['prompt'],
+                                                credentials_dict=st.session_state.imagen_credentials,
+                                                number_of_images=1,
+                                                aspect_ratio=aspect_ratio
+                                            )
+
+                                            if result['images']:
+                                                # Save the generated image
+                                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                                image_filename = f"imagen_{timestamp}.png"
+                                                image_path = GENERATED_IMAGES_DIR / image_filename
+
+                                                save_generated_image(result['images'][0], str(image_path))
+
+                                                # Display the generated image
+                                                st.success(f"✅ Image generated successfully!")
+                                                st.image(str(image_path), caption=f"Generated: {prompt_data['prompt'][:50]}...", use_container_width=True)
+
+                                                # Add to session state
+                                                st.session_state.generated_images.append({
+                                                    'path': str(image_path),
+                                                    'prompt': prompt_data['prompt'],
+                                                    'timestamp': timestamp
+                                                })
+
+                                                # Show cost estimate
+                                                cost = estimate_imagen_cost(1)
+                                                st.caption(f"💰 Estimated cost: ${cost:.3f}")
+                                            else:
+                                                st.error("No images were generated")
+                                        except Exception as e:
+                                            st.error(f"Generation failed: {str(e)}")
+                                            if "quota" in str(e).lower() or "billing" in str(e).lower():
+                                                st.warning("💡 Make sure billing is enabled and you have remaining credits in your Google Cloud account.")
+                        elif prompt_data['type'] == 'Image' and not st.session_state.imagen_enabled:
+                            st.info("💡 Configure Imagen 2 in API Settings to generate images directly")
+
         else:  # Custom Parameters mode
             st.info("Customize your AI prompt generation parameters")
 
@@ -1621,6 +1723,65 @@ def render_post_analysis(df: pd.DataFrame):
                         st.text_area("AI Prompt", custom_prompt, height=120, key="custom_prompt_display")
                         st.code(custom_prompt, language=None)
                         st.caption("**Recommended Tools:** Midjourney, DALL-E 3, Stable Diffusion, Leonardo.AI")
+
+                        # Imagen 2 generation option for custom prompts (only for images)
+                        if content_type == 'Image' and st.session_state.imagen_enabled:
+                            st.markdown("---")
+                            col_gen_custom, col_settings_custom = st.columns([1, 1])
+
+                            with col_settings_custom:
+                                aspect_ratio_custom = st.selectbox(
+                                    "Aspect Ratio",
+                                    ["1:1", "9:16", "16:9", "4:3", "3:4"],
+                                    key="aspect_custom",
+                                    help="Image dimensions"
+                                )
+
+                            with col_gen_custom:
+                                if st.button("🎨 Generate with Imagen 2", key="gen_imagen_custom", use_container_width=True, type="primary"):
+                                    with st.spinner("Generating image with Imagen 2..."):
+                                        try:
+                                            # Create output directory
+                                            GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
+
+                                            # Generate image
+                                            result = generate_image_with_imagen(
+                                                prompt=custom_prompt,
+                                                credentials_dict=st.session_state.imagen_credentials,
+                                                number_of_images=1,
+                                                aspect_ratio=aspect_ratio_custom
+                                            )
+
+                                            if result['images']:
+                                                # Save the generated image
+                                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                                image_filename = f"imagen_custom_{timestamp}.png"
+                                                image_path = GENERATED_IMAGES_DIR / image_filename
+
+                                                save_generated_image(result['images'][0], str(image_path))
+
+                                                # Display the generated image
+                                                st.success(f"✅ Image generated successfully!")
+                                                st.image(str(image_path), caption=f"Generated: {custom_prompt[:50]}...", use_container_width=True)
+
+                                                # Add to session state
+                                                st.session_state.generated_images.append({
+                                                    'path': str(image_path),
+                                                    'prompt': custom_prompt,
+                                                    'timestamp': timestamp
+                                                })
+
+                                                # Show cost estimate
+                                                cost = estimate_imagen_cost(1)
+                                                st.caption(f"💰 Estimated cost: ${cost:.3f}")
+                                            else:
+                                                st.error("No images were generated")
+                                        except Exception as e:
+                                            st.error(f"Generation failed: {str(e)}")
+                                            if "quota" in str(e).lower() or "billing" in str(e).lower():
+                                                st.warning("💡 Make sure billing is enabled and you have remaining credits in your Google Cloud account.")
+                        elif content_type == 'Image' and not st.session_state.imagen_enabled:
+                            st.info("💡 Configure Imagen 2 in API Settings to generate images directly")
                 else:
                     st.warning("Please enter at least a subject/theme to generate a custom prompt")
 
@@ -1637,9 +1798,15 @@ def render_post_analysis(df: pd.DataFrame):
             - Iterate on prompts that generate high-engagement content
 
             **Popular AI Tools:**
-            - **Images:** Midjourney, DALL-E 3, Stable Diffusion, Leonardo.AI
+            - **Images:** Google Imagen 2 (integrated!), Midjourney, DALL-E 3, Stable Diffusion, Leonardo.AI
             - **Videos:** Runway ML, Pika Labs, Synthesia, D-ID
             - **Enhancement:** Topaz AI, Magnific AI, Krea.ai
+
+            **Imagen 2 Integration:**
+            - Configure Imagen 2 in API Settings to generate images directly in the dashboard
+            - Uses Google Cloud Vertex AI with $300 free credits for new accounts
+            - Approximately $0.020 per image at standard resolution
+            - Supports multiple aspect ratios (1:1, 9:16, 16:9, 4:3, 3:4)
 
             **Pro Tip:** Track which AI-generated content performs best and use those insights to refine future prompts!
             """)
@@ -1858,7 +2025,8 @@ def render_post_analysis(df: pd.DataFrame):
 
                 with col_status:
                     if st.session_state.gemini_enabled:
-                        masked_key = st.session_state.gemini_api_key[:10] + "..." + st.session_state.gemini_api_key[-4:]
+                        # Mask the API key completely for security
+                        masked_key = "sk-***...***" + st.session_state.gemini_api_key[-4:]
                         st.success(f"✅ AI Enabled (Gemini 2.0): {masked_key}")
                     else:
                         st.warning("⚠️ API key saved but not tested")
@@ -1890,6 +2058,100 @@ def render_post_analysis(df: pd.DataFrame):
 
             st.markdown("---")
             st.info("**Note:** API key is saved locally and will persist until cleared.")
+
+        # --- IMAGEN 2 API SETTINGS SECTION ---
+        with st.expander("🎨 Imagen 2 API Settings (Google Cloud)", expanded=False):
+            st.markdown("Configure your Google Cloud credentials to enable AI-powered image generation using Imagen 2.")
+            st.markdown("---")
+
+            # JSON Credentials upload
+            st.markdown("### Upload Service Account JSON")
+            uploaded_imagen_file = st.file_uploader(
+                "Drop your Google Cloud service account JSON file here",
+                type=['json'],
+                help="Upload the JSON key file from your Google Cloud service account with Vertex AI access",
+                key="imagen_credentials_uploader"
+            )
+
+            if uploaded_imagen_file is not None:
+                try:
+                    import json
+                    credentials_content = uploaded_imagen_file.read().decode('utf-8')
+                    credentials_dict = json.loads(credentials_content)
+
+                    # Validate required fields
+                    required_fields = ['private_key', 'client_email', 'project_id']
+                    missing_fields = [f for f in required_fields if f not in credentials_dict]
+
+                    if missing_fields:
+                        st.error(f"Invalid credentials file. Missing fields: {', '.join(missing_fields)}")
+                    else:
+                        st.success(f"Credentials loaded for project: **{credentials_dict.get('project_id')}**")
+                        st.info(f"Service account: {credentials_dict.get('client_email')}")
+
+                        if st.button("💾 Save Imagen Credentials", use_container_width=True):
+                            st.session_state.imagen_credentials = credentials_dict
+                            save_imagen_credentials(credentials_dict)
+                            with st.spinner("Validating Imagen credentials..."):
+                                try:
+                                    is_valid = test_imagen_connection(credentials_dict)
+                                    st.session_state.imagen_enabled = is_valid
+                                    if is_valid:
+                                        st.success("✅ Imagen credentials saved and validated!")
+                                    else:
+                                        st.warning("⚠️ Credentials saved but validation failed. Make sure Vertex AI API is enabled.")
+                                        st.session_state.imagen_enabled = True  # Allow usage anyway
+                                except Exception as e:
+                                    st.session_state.imagen_enabled = True
+                                    st.warning(f"Credentials saved. Validation skipped: {str(e)}")
+                            st.rerun()
+
+                except json.JSONDecodeError:
+                    st.error("Invalid JSON file. Please upload a valid service account JSON file.")
+                except Exception as e:
+                    st.error(f"Error reading file: {str(e)}")
+
+            # Current status
+            if st.session_state.imagen_credentials:
+                st.markdown("---")
+                st.markdown("### Current Status")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.session_state.imagen_enabled:
+                        project_id = st.session_state.imagen_credentials.get('project_id', 'Unknown')
+                        st.success(f"✅ Imagen Enabled: {project_id}")
+                    else:
+                        st.warning(f"⚠️ Credentials loaded: {st.session_state.imagen_credentials.get('project_id', 'Unknown')}")
+                with col2:
+                    if st.button("🗑️ Clear Imagen Credentials", use_container_width=True):
+                        st.session_state.imagen_credentials = None
+                        st.session_state.imagen_enabled = False
+                        clear_imagen_credentials()
+                        st.info("Imagen credentials cleared")
+                        st.rerun()
+
+            st.markdown("---")
+            st.markdown("""
+            ### How to Get Vertex AI Service Account JSON
+            1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+            2. Create a new project or select an existing one
+            3. Enable the **Vertex AI API**
+            4. Go to **IAM & Admin** → **Service Accounts**
+            5. Click **Create Service Account**
+            6. Give it a name and click **Create**
+            7. Grant the role **Vertex AI User**
+            8. Click **Done**, then click on the service account
+            9. Go to **Keys** → **Add Key** → **Create new key** → **JSON**
+            10. Upload the downloaded JSON file above
+
+            **Important Notes:**
+            - New Google Cloud accounts get **$300 in free credits**
+            - Imagen 2 pricing: ~$0.020 per image (standard resolution)
+            - Make sure **Vertex AI API** is enabled in your project
+            """)
+
+            st.markdown("---")
+            st.info("**Note:** Credentials are saved locally and will persist until cleared.")
 
 
 def main():
