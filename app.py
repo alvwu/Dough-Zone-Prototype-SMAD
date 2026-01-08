@@ -12,6 +12,7 @@ from plotly.subplots import make_subplots
 from pathlib import Path
 from datetime import datetime
 import re
+import base64
 
 # Import custom modules
 import database
@@ -801,7 +802,6 @@ def render_image_analysis(df: pd.DataFrame):
     # --- POST EXPLORER TAB ---
     with tab_explorer:
         st.subheader("Post Explorer")
-        st.markdown("Click on a thumbnail to view detailed information")
 
         # Initialize selected post in session state
         if 'selected_explorer_post' not in st.session_state:
@@ -831,28 +831,142 @@ def render_image_analysis(df: pd.DataFrame):
         ascending = True if sort_choice == "Date" else False
         df_sorted = df_processed.sort_values(sort_col, ascending=ascending)
 
-        # Thumbnail grid (6 columns for compact view)
-        thumb_cols = st.columns(6)
+        # Build horizontal scrollable thumbnail strip
+        thumbnail_html = '<div class="thumbnail-strip">'
+        for _, row in df_sorted.iterrows():
+            image_file = row.get('image_file', '')
+            image_path = IMAGE_DIR / image_file if image_file else None
+            shortcode = row['shortcode']
+            is_selected = st.session_state.selected_explorer_post == shortcode
+            selected_class = "selected" if is_selected else ""
+
+            if image_path and image_path.exists():
+                with open(image_path, "rb") as img_file:
+                    img_data = base64.b64encode(img_file.read()).decode()
+                img_src = f"data:image/jpeg;base64,{img_data}"
+                thumbnail_html += f'''
+                    <div class="thumb-item {selected_class}" data-shortcode="{shortcode}">
+                        <img src="{img_src}" alt="{image_file}">
+                        <div class="thumb-label">{image_file[:10] if image_file else shortcode[:8]}</div>
+                        <div class="thumb-engagement">❤️ {int(row['likes']):,}</div>
+                    </div>
+                '''
+            else:
+                thumbnail_html += f'''
+                    <div class="thumb-item {selected_class}" data-shortcode="{shortcode}">
+                        <div class="thumb-placeholder">📷</div>
+                        <div class="thumb-label">{image_file or shortcode[:8]}</div>
+                    </div>
+                '''
+        thumbnail_html += '</div>'
+
+        # CSS for horizontal scrollable strip
+        st.markdown("""
+            <style>
+            .thumbnail-strip {
+                display: flex;
+                overflow-x: auto;
+                gap: 12px;
+                padding: 12px 4px;
+                margin-bottom: 16px;
+                scrollbar-width: thin;
+                scrollbar-color: #e8a66d #fff8f0;
+            }
+            .thumbnail-strip::-webkit-scrollbar {
+                height: 8px;
+            }
+            .thumbnail-strip::-webkit-scrollbar-track {
+                background: #fff8f0;
+                border-radius: 4px;
+            }
+            .thumbnail-strip::-webkit-scrollbar-thumb {
+                background: #e8a66d;
+                border-radius: 4px;
+            }
+            .thumb-item {
+                flex: 0 0 auto;
+                width: 100px;
+                text-align: center;
+                cursor: pointer;
+                border-radius: 12px;
+                padding: 8px;
+                background: #fff8f0;
+                border: 2px solid transparent;
+                transition: all 0.2s ease;
+            }
+            .thumb-item:hover {
+                border-color: #e8a66d;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(180, 100, 50, 0.2);
+            }
+            .thumb-item.selected {
+                border-color: #b65532;
+                background: linear-gradient(135deg, #f4c095 0%, #e8a66d 100%);
+            }
+            .thumb-item img {
+                width: 80px;
+                height: 80px;
+                object-fit: cover;
+                border-radius: 8px;
+            }
+            .thumb-placeholder {
+                width: 80px;
+                height: 80px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 2rem;
+                background: #f4c095;
+                border-radius: 8px;
+                margin: 0 auto;
+            }
+            .thumb-label {
+                font-size: 0.7rem;
+                color: #2d1b12;
+                margin-top: 6px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .thumb-engagement {
+                font-size: 0.65rem;
+                color: #6b4b3e;
+            }
+            .button-row {
+                margin-top: -8px;
+            }
+            .button-row .stButton button {
+                font-size: 0.75rem;
+                padding: 4px 8px;
+                min-height: 32px;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+
+        st.markdown(thumbnail_html, unsafe_allow_html=True)
+
+        # Compact button row for selection
+        st.markdown('<div class="button-row">', unsafe_allow_html=True)
+        num_posts = len(df_sorted)
+        # Use 10 columns max to keep buttons usable
+        cols_to_use = min(num_posts, 10)
+        button_cols = st.columns(cols_to_use)
+
         for idx, (_, row) in enumerate(df_sorted.iterrows()):
-            with thumb_cols[idx % 6]:
-                image_file = row.get('image_file', '')
-                image_path = IMAGE_DIR / image_file if image_file else None
+            col_idx = idx % cols_to_use
+            with button_cols[col_idx]:
                 shortcode = row['shortcode']
-
-                # Check if this post is selected
                 is_selected = st.session_state.selected_explorer_post == shortcode
-
-                # Display thumbnail with selection indicator
-                if image_path and image_path.exists():
-                    st.image(str(image_path), use_container_width=True)
-                else:
-                    st.markdown(f"📷 {image_file or 'N/A'}")
-
-                # Button to select this post
-                btn_label = f"✓ {image_file}" if is_selected else image_file or shortcode[:8]
-                if st.button(btn_label, key=f"thumb_{shortcode}", use_container_width=True):
+                image_file = row.get('image_file', '')
+                # Show truncated filename or index
+                label = f"✓ {idx+1}" if is_selected else str(idx + 1)
+                if st.button(label, key=f"thumb_{shortcode}", use_container_width=True, help=image_file):
                     st.session_state.selected_explorer_post = shortcode
                     st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Add anchor and auto-scroll
+        st.markdown('<div id="post-details-anchor"></div>', unsafe_allow_html=True)
 
         st.markdown("---")
 
