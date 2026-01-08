@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from pathlib import Path
 from datetime import datetime
+import re
 
 # Import custom modules
 import database
@@ -31,6 +32,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Image directory
+IMAGE_DIR = Path(__file__).parent / "image"
 
 
 def init_session_state():
@@ -58,15 +62,44 @@ def load_data():
     return df
 
 
+def extract_hashtags(caption: str) -> list:
+    """Extract hashtags from caption text."""
+    if not caption or pd.isna(caption):
+        return []
+    return re.findall(r"#\w+", caption.lower())
+
+
+def build_hashtag_table(captions: list) -> pd.DataFrame:
+    """Build a table of hashtag frequencies."""
+    hashtags = []
+    for caption in captions:
+        hashtags.extend(extract_hashtags(caption))
+    if not hashtags:
+        return pd.DataFrame(columns=["hashtag", "count"])
+    series = pd.Series(hashtags).value_counts().reset_index()
+    series.columns = ["hashtag", "count"]
+    return series
+
+
+def get_caption_metrics(df: pd.DataFrame) -> pd.DataFrame:
+    """Add caption-related metrics to dataframe."""
+    df = df.copy()
+    df['caption'] = df['caption'].fillna('')
+    df['caption_length'] = df['caption'].str.len()
+    df['hashtag_count'] = df['caption'].apply(lambda x: len(extract_hashtags(x)))
+    df['word_count'] = df['caption'].str.split().str.len().fillna(0)
+    return df
+
+
 def render_sidebar():
     """Render the sidebar with navigation and controls."""
     st.sidebar.title("📊 Analytics Dashboard")
     st.sidebar.markdown("---")
 
-    # Navigation - Only 3 pages now
+    # Navigation - 4 pages now
     page = st.sidebar.radio(
         "Navigation",
-        ["Overview", "Engagement Analysis", "Time Analysis"]
+        ["Overview", "Engagement Analysis", "Time Analysis", "Image Analysis"]
     )
 
     st.sidebar.markdown("---")
@@ -452,6 +485,220 @@ def render_time_analysis(df: pd.DataFrame):
         st.dataframe(time_data, use_container_width=True)
 
 
+def render_image_analysis(df: pd.DataFrame):
+    """Render the image analysis page with Post Explorer style."""
+    st.title("🖼️ Image Analysis")
+    st.markdown("---")
+
+    if len(df) == 0:
+        st.warning("No data available.")
+        return
+
+    # Process data with engagement and caption metrics
+    df_processed = calculate_engagement_metrics(df)
+    df_processed = get_caption_metrics(df_processed)
+
+    # Create tabs
+    tab_gallery, tab_explorer, tab_content = st.tabs(
+        ["📸 Gallery", "🔍 Post Explorer", "📊 Content Insights"]
+    )
+
+    # --- GALLERY TAB ---
+    with tab_gallery:
+        st.subheader("Top Performing Posts")
+        st.markdown("Visual gallery of highest engagement posts")
+
+        # Sort by engagement
+        gallery_df = df_processed.sort_values('total_engagement', ascending=False)
+
+        # Display in grid
+        cols_per_row = 3
+        gallery_posts = gallery_df.head(12)
+
+        for i in range(0, len(gallery_posts), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for j, col in enumerate(cols):
+                if i + j < len(gallery_posts):
+                    row = gallery_posts.iloc[i + j]
+                    with col:
+                        # Try to find the image
+                        image_file = row.get('image_file', '')
+                        image_path = IMAGE_DIR / image_file if image_file else None
+
+                        if image_path and image_path.exists():
+                            st.image(str(image_path), use_container_width=True)
+                        else:
+                            st.info(f"📷 {image_file or 'No image'}")
+
+                        # Post info
+                        st.markdown(f"**{row.get('image_file', row['shortcode'])}**")
+                        st.caption(f"❤️ {int(row['likes']):,} | 💬 {int(row['comments'])} | Total: {int(row['total_engagement']):,}")
+
+    # --- POST EXPLORER TAB ---
+    with tab_explorer:
+        st.subheader("Post Explorer")
+        st.markdown("Select a post to view detailed information")
+
+        # Create display options for selectbox
+        post_options = []
+        for _, row in df_processed.iterrows():
+            image_file = row.get('image_file', '')
+            display_name = image_file if image_file else row['shortcode']
+            post_options.append((display_name, row['shortcode']))
+
+        # Selectbox
+        selected_display = st.selectbox(
+            "Select a post",
+            options=[p[0] for p in post_options],
+            format_func=lambda x: x
+        )
+
+        # Get the selected row
+        selected_shortcode = next(p[1] for p in post_options if p[0] == selected_display)
+        selected_row = df_processed[df_processed['shortcode'] == selected_shortcode].iloc[0]
+
+        # Layout: Image | Details
+        col_image, col_details = st.columns([1, 1.2])
+
+        with col_image:
+            image_file = selected_row.get('image_file', '')
+            image_path = IMAGE_DIR / image_file if image_file else None
+
+            if image_path and image_path.exists():
+                st.image(str(image_path), use_container_width=True)
+            else:
+                st.info(f"📷 Image: {image_file or 'Not available'}")
+
+        with col_details:
+            st.markdown("### Post Details")
+
+            # Engagement metrics
+            metric_cols = st.columns(3)
+            with metric_cols[0]:
+                st.metric("Likes", f"{int(selected_row['likes']):,}")
+            with metric_cols[1]:
+                st.metric("Comments", f"{int(selected_row['comments'])}")
+            with metric_cols[2]:
+                st.metric("Total Engagement", f"{int(selected_row['total_engagement']):,}")
+
+            st.markdown("---")
+
+            # Caption
+            st.markdown("**Caption**")
+            caption = selected_row.get('caption', '')
+            if caption and not pd.isna(caption):
+                st.write(caption)
+
+                # Caption metrics
+                st.markdown("---")
+                cap_cols = st.columns(3)
+                with cap_cols[0]:
+                    st.caption(f"📝 {int(selected_row.get('caption_length', 0))} characters")
+                with cap_cols[1]:
+                    st.caption(f"#️⃣ {int(selected_row.get('hashtag_count', 0))} hashtags")
+                with cap_cols[2]:
+                    st.caption(f"📖 {int(selected_row.get('word_count', 0))} words")
+
+                # Show hashtags
+                hashtags = extract_hashtags(caption)
+                if hashtags:
+                    st.markdown("**Hashtags**")
+                    hashtag_html = " ".join([f"`{tag}`" for tag in hashtags])
+                    st.markdown(hashtag_html)
+            else:
+                st.write("*No caption available*")
+
+            # Post metadata
+            st.markdown("---")
+            st.caption(f"📅 Posted: {selected_row['posting_date']}")
+            st.caption(f"🆔 Shortcode: {selected_row['shortcode']}")
+
+    # --- CONTENT INSIGHTS TAB ---
+    with tab_content:
+        st.subheader("Content Insights")
+        st.markdown("Analyze caption patterns and their impact on engagement")
+
+        col_left, col_right = st.columns(2)
+
+        with col_left:
+            # Top Hashtags
+            st.markdown("### 🏷️ Top Hashtags")
+            hashtag_table = build_hashtag_table(df_processed['caption'].tolist())
+
+            if not hashtag_table.empty:
+                fig = px.bar(
+                    hashtag_table.head(10),
+                    x='count',
+                    y='hashtag',
+                    orientation='h',
+                    title='Most Used Hashtags',
+                    color='count',
+                    color_continuous_scale='Blues'
+                )
+                fig.update_layout(height=400, yaxis={'categoryorder': 'total ascending'})
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No hashtags found in captions")
+
+        with col_right:
+            # Caption Length vs Engagement
+            st.markdown("### 📝 Caption Length vs Engagement")
+            fig = px.scatter(
+                df_processed,
+                x='caption_length',
+                y='total_engagement',
+                size='likes',
+                hover_data=['image_file', 'hashtag_count'],
+                title='Does Caption Length Affect Engagement?',
+                color='hashtag_count',
+                color_continuous_scale='Viridis'
+            )
+            fig.update_layout(height=400)
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("---")
+
+        # Engagement by Hashtag Count
+        st.markdown("### #️⃣ Engagement by Hashtag Count")
+        hashtag_engagement = df_processed.groupby('hashtag_count').agg({
+            'likes': 'mean',
+            'comments': 'mean',
+            'total_engagement': 'mean',
+            'shortcode': 'count'
+        }).round(2).reset_index()
+        hashtag_engagement.columns = ['Hashtag Count', 'Avg Likes', 'Avg Comments', 'Avg Engagement', 'Post Count']
+
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            fig = px.bar(
+                hashtag_engagement,
+                x='Hashtag Count',
+                y='Avg Engagement',
+                title='Average Engagement by Number of Hashtags',
+                color='Avg Engagement',
+                color_continuous_scale='Oranges'
+            )
+            fig.update_layout(height=350)
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col2:
+            st.dataframe(hashtag_engagement, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+
+        # Top Performing Captions
+        st.markdown("### 🏆 Top Performing Captions")
+        top_captions = df_processed.sort_values('total_engagement', ascending=False).head(5)
+
+        for _, row in top_captions.iterrows():
+            with st.expander(f"📷 {row.get('image_file', row['shortcode'])} — {int(row['total_engagement']):,} engagement"):
+                caption = row.get('caption', '')
+                if caption and not pd.isna(caption):
+                    st.write(caption[:500] + "..." if len(str(caption)) > 500 else caption)
+                st.caption(f"❤️ {int(row['likes']):,} likes | 💬 {int(row['comments'])} comments | 📝 {int(row.get('caption_length', 0))} chars | #️⃣ {int(row.get('hashtag_count', 0))} hashtags")
+
+
 def main():
     """Main application entry point."""
     init_session_state()
@@ -469,6 +716,8 @@ def main():
         render_engagement_analysis(df)
     elif page == "Time Analysis":
         render_time_analysis(df)
+    elif page == "Image Analysis":
+        render_image_analysis(df)
 
 
 if __name__ == "__main__":
