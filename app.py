@@ -677,13 +677,173 @@ def render_image_analysis(df: pd.DataFrame):
     # --- CONTENT INSIGHTS TAB ---
     with tab_content:
         st.subheader("Content Insights")
-        st.markdown("Analyze caption patterns and their impact on engagement")
+        st.markdown("Analyze visual patterns, caption styles, and their impact on engagement")
 
+        # --- DOMINANT VISUAL LABELS ---
+        st.markdown("### 🏷️ Dominant Visual Labels")
+        if st.session_state.vision_results:
+            # Build label frequency table from vision results
+            all_labels = []
+            for image_name, vision_data in st.session_state.vision_results.items():
+                if vision_data.get('labels'):
+                    labels = [l.strip() for l in vision_data['labels'].split(',')]
+                    all_labels.extend(labels)
+
+            if all_labels:
+                label_counts = pd.Series(all_labels).value_counts().reset_index()
+                label_counts.columns = ['label', 'count']
+
+                col_left, col_right = st.columns(2)
+                with col_left:
+                    fig = px.bar(
+                        label_counts.head(10),
+                        x='count',
+                        y='label',
+                        orientation='h',
+                        title='Most Detected Labels (Google Vision)',
+                        color='count',
+                        color_continuous_scale='Reds'
+                    )
+                    fig.update_layout(height=400, yaxis={'categoryorder': 'total ascending'})
+                    st.plotly_chart(fig, use_container_width=True)
+
+                with col_right:
+                    st.markdown("**Top Visual Elements**")
+                    for _, row in label_counts.head(12).iterrows():
+                        st.markdown(f"`{row['label']}` ({row['count']})")
+            else:
+                st.info("No labels found in analyzed images.")
+        else:
+            st.info("No images analyzed yet. Go to **API Settings** to configure Vision API and analyze images.")
+
+        st.markdown("---")
+
+        # --- SIGNATURE COLOR PALETTE ---
+        st.markdown("### 🎨 Signature Color Palette")
+        if st.session_state.vision_results:
+            # Build color frequency table from vision results
+            all_colors = []
+            for image_name, vision_data in st.session_state.vision_results.items():
+                if vision_data.get('dominant_colors'):
+                    colors = [c.strip() for c in vision_data['dominant_colors'].split(',')]
+                    all_colors.extend(colors)
+
+            if all_colors:
+                color_counts = pd.Series(all_colors).value_counts().reset_index()
+                color_counts.columns = ['color', 'count']
+
+                # Display color swatches
+                st.markdown("**Most Common Colors in Your Content**")
+                cols = st.columns(6)
+                color_map = {
+                    'red': '#e74c3c', 'green': '#27ae60', 'blue': '#3498db',
+                    'yellow': '#f1c40f', 'orange': '#e67e22', 'purple': '#9b59b6',
+                    'pink': '#fd79a8', 'brown': '#8B4513', 'black': '#2c3e50',
+                    'white': '#ecf0f1', 'gray': '#95a5a6', 'beige': '#f5f5dc',
+                    'gold': '#f39c12', 'teal': '#1abc9c', 'navy': '#2c3e50',
+                    'maroon': '#c0392b', 'olive': '#808000', 'cyan': '#00bcd4',
+                    'magenta': '#e91e63'
+                }
+
+                for idx, (_, row) in enumerate(color_counts.head(12).iterrows()):
+                    color_name = row['color'].lower()
+                    hex_color = color_map.get(color_name, '#cccccc')
+                    with cols[idx % 6]:
+                        st.markdown(
+                            f"""<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                            <div style="width:24px;height:24px;border-radius:50%;background:{hex_color};border:1px solid #ccc;"></div>
+                            <span>{row['color']} ({row['count']})</span>
+                            </div>""",
+                            unsafe_allow_html=True
+                        )
+            else:
+                st.info("No color data found in analyzed images.")
+        else:
+            st.info("Analyze images with Vision API to see color palette insights.")
+
+        st.markdown("---")
+
+        # --- CONTENT RECOMMENDATIONS ---
+        st.markdown("### 💡 Content Recommendations")
+        st.markdown("Data-driven insights to help guide your content strategy")
+
+        # Calculate metrics for recommendations
+        avg_likes = df_processed['likes'].mean()
+        avg_comments = df_processed['comments'].mean()
+        top_quartile = df_processed['total_engagement'].quantile(0.75)
+        top_posts = df_processed[df_processed['total_engagement'] >= top_quartile]
+        avg_caption = df_processed['caption_length'].mean()
+        avg_hashtags = df_processed['hashtag_count'].mean()
+        top_caption = top_posts['caption_length'].mean() if not top_posts.empty else avg_caption
+        top_hashtags = top_posts['hashtag_count'].mean() if not top_posts.empty else avg_hashtags
+        comment_rate = (avg_comments / avg_likes) if avg_likes else 0
+
+        # Get top labels if available
+        top_labels_str = ""
+        if st.session_state.vision_results:
+            all_labels = []
+            for vision_data in st.session_state.vision_results.values():
+                if vision_data.get('labels'):
+                    labels = [l.strip() for l in vision_data['labels'].split(',')]
+                    all_labels.extend(labels)
+            if all_labels:
+                top_3_labels = pd.Series(all_labels).value_counts().head(3).index.tolist()
+                top_labels_str = ", ".join(top_3_labels)
+
+        # Build recommendations
+        recommendations = [
+            {
+                "icon": "📝",
+                "title": "Caption Length",
+                "detail": f"Top performing posts average **{top_caption:.0f} characters** vs. {avg_caption:.0f} overall. Consider longer, story-driven captions."
+            },
+            {
+                "icon": "🏷️",
+                "title": "Hashtag Strategy",
+                "detail": f"High performers use around **{top_hashtags:.1f} hashtags**. Focus on brand, product, and location tags."
+            },
+            {
+                "icon": "💬",
+                "title": "Conversation Starter",
+                "detail": f"Comments are **{comment_rate:.1%}** of likes. Add questions or calls-to-action to boost replies."
+            },
+            {
+                "icon": "🎯",
+                "title": "Hook First",
+                "detail": "Start captions with a compelling hook, question, or seasonal tie-in to grab attention."
+            },
+            {
+                "icon": "📸",
+                "title": "Visual Consistency",
+                "detail": f"Top visual elements: **{top_labels_str if top_labels_str else 'Analyze images to see'}**. Repeat signature visuals to build brand recognition."
+            },
+            {
+                "icon": "⏰",
+                "title": "Timing Matters",
+                "detail": "Check the Time Analysis page to find your optimal posting windows."
+            }
+        ]
+
+        # Display recommendations in grid
+        rec_cols = st.columns(3)
+        for idx, rec in enumerate(recommendations):
+            with rec_cols[idx % 3]:
+                st.markdown(
+                    f"""<div style="background:#f8f9fa;padding:16px;border-radius:12px;margin-bottom:12px;min-height:160px;">
+                    <div style="font-size:1.5rem;">{rec['icon']}</div>
+                    <div style="font-weight:600;margin:8px 0;color:#2c3e50;">{rec['title']}</div>
+                    <div style="color:#555;font-size:0.9rem;">{rec['detail']}</div>
+                    </div>""",
+                    unsafe_allow_html=True
+                )
+
+        st.markdown("---")
+
+        # --- TOP HASHTAGS & CAPTION ANALYSIS ---
         col_left, col_right = st.columns(2)
 
         with col_left:
-            # Top Hashtags
-            st.markdown("### 🏷️ Top Hashtags")
+            st.markdown("### #️⃣ Top Hashtags")
             hashtag_table = build_hashtag_table(df_processed['caption'].tolist())
 
             if not hashtag_table.empty:
@@ -702,7 +862,6 @@ def render_image_analysis(df: pd.DataFrame):
                 st.info("No hashtags found in captions")
 
         with col_right:
-            # Caption Length vs Engagement
             st.markdown("### 📝 Caption Length vs Engagement")
             fig = px.scatter(
                 df_processed,
@@ -716,35 +875,6 @@ def render_image_analysis(df: pd.DataFrame):
             )
             fig.update_layout(height=400)
             st.plotly_chart(fig, use_container_width=True)
-
-        st.markdown("---")
-
-        # Engagement by Hashtag Count
-        st.markdown("### #️⃣ Engagement by Hashtag Count")
-        hashtag_engagement = df_processed.groupby('hashtag_count').agg({
-            'likes': 'mean',
-            'comments': 'mean',
-            'total_engagement': 'mean',
-            'shortcode': 'count'
-        }).round(2).reset_index()
-        hashtag_engagement.columns = ['Hashtag Count', 'Avg Likes', 'Avg Comments', 'Avg Engagement', 'Post Count']
-
-        col1, col2 = st.columns([2, 1])
-
-        with col1:
-            fig = px.bar(
-                hashtag_engagement,
-                x='Hashtag Count',
-                y='Avg Engagement',
-                title='Average Engagement by Number of Hashtags',
-                color='Avg Engagement',
-                color_continuous_scale='Oranges'
-            )
-            fig.update_layout(height=350)
-            st.plotly_chart(fig, use_container_width=True)
-
-        with col2:
-            st.dataframe(hashtag_engagement, use_container_width=True, hide_index=True)
 
         st.markdown("---")
 
