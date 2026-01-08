@@ -102,59 +102,83 @@ def generate_image_with_imagen(
     """
     import requests
 
-    # Get access token
-    access_token = get_access_token_for_imagen(credentials_dict)
+    print(f"[DEBUG] Starting image generation for prompt: {prompt[:50]}...")
+    print(f"[DEBUG] Aspect ratio: {aspect_ratio}")
 
-    # Extract project ID
-    project_id = credentials_dict['project_id']
+    try:
+        # Get access token
+        print("[DEBUG] Getting access token...")
+        access_token = get_access_token_for_imagen(credentials_dict)
+        print("[DEBUG] Access token obtained successfully")
 
-    # Vertex AI Imagen 2 endpoint
-    location = "us-central1"  # Imagen is available in us-central1
-    url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/imagegeneration@006:predict"
+        # Extract project ID
+        project_id = credentials_dict['project_id']
+        print(f"[DEBUG] Using project ID: {project_id}")
 
-    # Request payload
-    payload = {
-        "instances": [
-            {
-                "prompt": prompt
+        # Vertex AI Imagen 2 endpoint
+        location = "us-central1"  # Imagen is available in us-central1
+        url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/imagegeneration@006:predict"
+        print(f"[DEBUG] API endpoint: {url}")
+
+        # Request payload
+        payload = {
+            "instances": [
+                {
+                    "prompt": prompt
+                }
+            ],
+            "parameters": {
+                "sampleCount": min(number_of_images, 4),  # Max 4 images
+                "aspectRatio": aspect_ratio,
+                "safetyFilterLevel": safety_filter_level,
+                "personGeneration": person_generation
             }
-        ],
-        "parameters": {
-            "sampleCount": min(number_of_images, 4),  # Max 4 images
-            "aspectRatio": aspect_ratio,
-            "safetyFilterLevel": safety_filter_level,
-            "personGeneration": person_generation
         }
-    }
+        print(f"[DEBUG] Request payload: {json.dumps(payload, indent=2)}")
 
-    # Make API request
-    headers = {
-        'Authorization': f'Bearer {access_token}',
-        'Content-Type': 'application/json'
-    }
+        # Make API request
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
+        }
 
-    response = requests.post(url, json=payload, headers=headers)
+        print("[DEBUG] Sending request to Imagen API...")
+        response = requests.post(url, json=payload, headers=headers, timeout=120)
+        print(f"[DEBUG] Response status code: {response.status_code}")
 
-    if response.status_code != 200:
-        error_detail = response.json() if response.content else response.text
-        raise Exception(f"Imagen API error ({response.status_code}): {error_detail}")
+        if response.status_code != 200:
+            error_detail = response.json() if response.content else response.text
+            print(f"[DEBUG] Error response: {error_detail}")
+            raise Exception(f"Imagen API error ({response.status_code}): {error_detail}")
 
-    result = response.json()
+        result = response.json()
+        print(f"[DEBUG] Response keys: {result.keys()}")
 
-    # Extract images from response
-    images = []
-    if 'predictions' in result:
-        for prediction in result['predictions']:
-            # Imagen returns base64-encoded images in 'bytesBase64Encoded' field
-            if 'bytesBase64Encoded' in prediction:
-                images.append(prediction['bytesBase64Encoded'])
+        # Extract images from response
+        images = []
+        if 'predictions' in result:
+            print(f"[DEBUG] Found {len(result['predictions'])} predictions")
+            for i, prediction in enumerate(result['predictions']):
+                print(f"[DEBUG] Prediction {i} keys: {prediction.keys()}")
+                # Imagen returns base64-encoded images in 'bytesBase64Encoded' field
+                if 'bytesBase64Encoded' in prediction:
+                    images.append(prediction['bytesBase64Encoded'])
+                    print(f"[DEBUG] Added image {i} (length: {len(prediction['bytesBase64Encoded'])} chars)")
+        else:
+            print(f"[DEBUG] No 'predictions' key in response. Response: {json.dumps(result, indent=2)}")
 
-    return {
-        'images': images,
-        'prompt': prompt,
-        'count': len(images),
-        'aspect_ratio': aspect_ratio
-    }
+        print(f"[DEBUG] Successfully extracted {len(images)} images")
+        return {
+            'images': images,
+            'prompt': prompt,
+            'count': len(images),
+            'aspect_ratio': aspect_ratio
+        }
+    except Exception as e:
+        print(f"[DEBUG] Exception occurred: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 def save_generated_image(image_base64: str, output_path: str) -> str:
