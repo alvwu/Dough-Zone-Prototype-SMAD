@@ -609,10 +609,13 @@ def render_image_analysis(df: pd.DataFrame):
         if 'selected_explorer_post' not in st.session_state:
             st.session_state.selected_explorer_post = df_processed.iloc[0]['shortcode']
 
+        # Sort thumbnails by engagement (highest first)
+        df_sorted = df_processed.sort_values('total_engagement', ascending=False)
+
         # Thumbnail grid (6 columns for compact view)
         st.markdown("#### Select a Post")
         thumb_cols = st.columns(6)
-        for idx, (_, row) in enumerate(df_processed.iterrows()):
+        for idx, (_, row) in enumerate(df_sorted.iterrows()):
             with thumb_cols[idx % 6]:
                 image_file = row.get('image_file', '')
                 image_path = IMAGE_DIR / image_file if image_file else None
