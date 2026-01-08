@@ -780,6 +780,100 @@ def render_time_analysis(df: pd.DataFrame):
         st.dataframe(time_data, use_container_width=True)
 
 
+def generate_prompts_with_gemini(top_performers, vision_results, content_type, style_preference, num_prompts):
+    """Generate AI prompts using Gemini API based on top performing content."""
+    try:
+        import google.generativeai as genai
+
+        # Configure Gemini
+        genai.configure(api_key=st.session_state.gemini_api_key)
+        model = genai.GenerativeModel('gemini-pro')
+
+        # Extract data for context
+        common_themes = []
+        common_colors = []
+        top_captions = []
+
+        if vision_results:
+            for img_file in top_performers['image_file'].head(5):
+                if img_file in vision_results:
+                    vision_data = vision_results[img_file]
+                    if vision_data.get('labels'):
+                        common_themes.extend([l.strip() for l in vision_data['labels'].split(',')])
+                    if vision_data.get('dominant_colors'):
+                        common_colors.extend([c.strip() for c in vision_data['dominant_colors'].split(',')])
+
+        # Get top themes and colors
+        if common_themes:
+            top_themes = pd.Series(common_themes).value_counts().head(5).index.tolist()
+            themes_str = ", ".join(top_themes)
+        else:
+            themes_str = "lifestyle, product, aesthetic"
+
+        if common_colors:
+            top_colors = pd.Series(common_colors).value_counts().head(3).index.tolist()
+            colors_str = ", ".join(top_colors)
+        else:
+            colors_str = "warm tones, vibrant, natural"
+
+        # Get sample captions
+        for _, row in top_performers.head(3).iterrows():
+            caption = row.get('caption', '')
+            if caption and not pd.isna(caption):
+                top_captions.append(str(caption)[:150])
+
+        captions_context = "\n".join([f"- {cap}" for cap in top_captions]) if top_captions else "N/A"
+
+        # Build prompt for Gemini
+        gemini_prompt = f"""You are an expert AI prompt engineer for image and video generation. Analyze this social media performance data and generate {num_prompts} creative prompts for {'image' if content_type == 'Image' else 'video' if content_type == 'Video' else 'image and video'} generation.
+
+**Performance Data:**
+- Visual themes that work: {themes_str}
+- Successful color palettes: {colors_str}
+- Style preference: {style_preference}
+- Sample high-performing captions:
+{captions_context}
+
+**Requirements:**
+1. Generate exactly {num_prompts} unique prompts
+2. Each prompt should be optimized for {'AI image generators like Midjourney, DALL-E, Stable Diffusion' if content_type == 'Image' else 'AI video generators like Runway ML, Pika Labs' if content_type == 'Video' else 'both image and video AI generators'}
+3. Incorporate the visual themes and colors that performed well
+4. Match the {style_preference} aesthetic
+5. Make prompts engaging, specific, and creative
+6. Each prompt should be 1-2 sentences, highly detailed
+
+Format your response as a numbered list with each prompt on a new line. Start each line with the number followed by a period."""
+
+        # Call Gemini API
+        response = model.generate_content(gemini_prompt)
+        prompts_text = response.text
+
+        # Parse response into individual prompts
+        generated_prompts = []
+        lines = prompts_text.strip().split('\n')
+
+        for line in lines:
+            line = line.strip()
+            # Remove numbering (1., 2., etc.)
+            if line and (line[0].isdigit() or line.startswith('-') or line.startswith('*')):
+                # Remove leading number, period, dash, or asterisk
+                prompt_text = line.lstrip('0123456789.-* ')
+                if prompt_text:
+                    prompt_type = "Image" if content_type == "Image" else "Video" if content_type == "Video" else ("Image" if len(generated_prompts) % 2 == 0 else "Video")
+                    generated_prompts.append({
+                        "type": prompt_type,
+                        "prompt": prompt_text,
+                        "style": style_preference,
+                        "source": "Gemini AI"
+                    })
+
+        return generated_prompts[:num_prompts]  # Limit to requested number
+
+    except Exception as e:
+        st.error(f"Gemini API Error: {str(e)}")
+        return []
+
+
 def render_post_analysis(df: pd.DataFrame):
     """Render the post analysis page with Post Explorer and AI Prompt Generator."""
     st.title("🖼️ Post Analysis")
@@ -1363,71 +1457,94 @@ def render_post_analysis(df: pd.DataFrame):
             num_prompts = st.slider("Number of Prompts to Generate", 1, 10, 3)
 
             if st.button("🎨 Generate AI Prompts", use_container_width=True, type="primary"):
-                with st.spinner("Analyzing your content and generating prompts..."):
-                    # Generate prompts based on Vision API data and performance metrics
-                    generated_prompts = []
+                # Check if Gemini is enabled and use AI-powered generation
+                if st.session_state.gemini_enabled and st.session_state.gemini_api_key:
+                    with st.spinner("🤖 Using Gemini AI to analyze your content and generate prompts..."):
+                        generated_prompts = generate_prompts_with_gemini(
+                            top_performers,
+                            st.session_state.vision_results,
+                            content_type,
+                            style_preference,
+                            num_prompts
+                        )
 
-                    # Extract common themes from top posts
-                    common_themes = []
-                    common_colors = []
-                    if st.session_state.vision_results:
-                        for img_file in top_performers['image_file'].head(5):
-                            if img_file in st.session_state.vision_results:
-                                vision_data = st.session_state.vision_results[img_file]
-                                if vision_data.get('labels'):
-                                    common_themes.extend([l.strip() for l in vision_data['labels'].split(',')])
-                                if vision_data.get('dominant_colors'):
-                                    common_colors.extend([c.strip() for c in vision_data['dominant_colors'].split(',')])
+                        if generated_prompts:
+                            st.success(f"✅ Generated {len(generated_prompts)} AI-powered prompts using Gemini!")
+                            st.info("🤖 These prompts were intelligently generated by analyzing your top-performing content")
+                        else:
+                            st.error("Failed to generate prompts with Gemini. Please check your API key in Settings.")
+                            generated_prompts = []
+                else:
+                    # Fallback: Template-based generation
+                    with st.spinner("Analyzing your content and generating prompts..."):
+                        # Generate prompts based on Vision API data and performance metrics
+                        generated_prompts = []
 
-                    # Get most common themes
-                    if common_themes:
-                        top_themes = pd.Series(common_themes).value_counts().head(5).index.tolist()
-                    else:
-                        top_themes = ["lifestyle", "product", "aesthetic", "creative"]
+                        # Extract common themes from top posts
+                        common_themes = []
+                        common_colors = []
+                        if st.session_state.vision_results:
+                            for img_file in top_performers['image_file'].head(5):
+                                if img_file in st.session_state.vision_results:
+                                    vision_data = st.session_state.vision_results[img_file]
+                                    if vision_data.get('labels'):
+                                        common_themes.extend([l.strip() for l in vision_data['labels'].split(',')])
+                                    if vision_data.get('dominant_colors'):
+                                        common_colors.extend([c.strip() for c in vision_data['dominant_colors'].split(',')])
 
-                    if common_colors:
-                        top_colors = pd.Series(common_colors).value_counts().head(3).index.tolist()
-                    else:
-                        top_colors = ["warm tones", "vibrant", "natural"]
+                        # Get most common themes
+                        if common_themes:
+                            top_themes = pd.Series(common_themes).value_counts().head(5).index.tolist()
+                        else:
+                            top_themes = ["lifestyle", "product", "aesthetic", "creative"]
 
-                    # Generate prompts
-                    for i in range(num_prompts):
-                        if content_type in ["Image", "Both"]:
-                            theme = top_themes[i % len(top_themes)]
-                            color = top_colors[i % len(top_colors)]
+                        if common_colors:
+                            top_colors = pd.Series(common_colors).value_counts().head(3).index.tolist()
+                        else:
+                            top_colors = ["warm tones", "vibrant", "natural"]
 
-                            style_map = {
-                                "Auto (Based on Data)": "",
-                                "Cinematic": ", cinematic lighting, film grain, depth of field",
-                                "Minimalist": ", minimalist design, clean composition, negative space",
-                                "Vibrant": ", vibrant colors, high saturation, energetic",
-                                "Artistic": ", artistic interpretation, creative expression, unique perspective",
-                                "Photorealistic": ", photorealistic, highly detailed, professional photography",
-                                "Illustration": ", digital illustration, stylized, artistic rendering"
-                            }
+                        # Generate prompts
+                        for i in range(num_prompts):
+                            if content_type in ["Image", "Both"]:
+                                theme = top_themes[i % len(top_themes)]
+                                color = top_colors[i % len(top_colors)]
 
-                            style_suffix = style_map.get(style_preference, "")
+                                style_map = {
+                                    "Auto (Based on Data)": "",
+                                    "Cinematic": ", cinematic lighting, film grain, depth of field",
+                                    "Minimalist": ", minimalist design, clean composition, negative space",
+                                    "Vibrant": ", vibrant colors, high saturation, energetic",
+                                    "Artistic": ", artistic interpretation, creative expression, unique perspective",
+                                    "Photorealistic": ", photorealistic, highly detailed, professional photography",
+                                    "Illustration": ", digital illustration, stylized, artistic rendering"
+                                }
 
-                            prompt = f"A stunning {theme} scene featuring {color} color palette{style_suffix}, high quality, professional composition, engaging and eye-catching"
+                                style_suffix = style_map.get(style_preference, "")
 
-                            generated_prompts.append({
-                                "type": "Image",
-                                "prompt": prompt,
-                                "style": style_preference
-                            })
+                                prompt = f"A stunning {theme} scene featuring {color} color palette{style_suffix}, high quality, professional composition, engaging and eye-catching"
 
-                        if content_type in ["Video", "Both"] and i < num_prompts:
-                            theme = top_themes[i % len(top_themes)]
-                            video_prompt = f"Dynamic video showcasing {theme}, smooth camera movements, {top_colors[0]} color grading, engaging transitions, 4K quality"
+                                generated_prompts.append({
+                                    "type": "Image",
+                                    "prompt": prompt,
+                                    "style": style_preference,
+                                    "source": "Template-based"
+                                })
 
-                            generated_prompts.append({
-                                "type": "Video",
-                                "prompt": video_prompt,
-                                "style": style_preference
-                            })
+                            if content_type in ["Video", "Both"] and i < num_prompts:
+                                theme = top_themes[i % len(top_themes)]
+                                video_prompt = f"Dynamic video showcasing {theme}, smooth camera movements, {top_colors[0]} color grading, engaging transitions, 4K quality"
+
+                                generated_prompts.append({
+                                    "type": "Video",
+                                    "prompt": video_prompt,
+                                    "style": style_preference,
+                                    "source": "Template-based"
+                                })
+
+                        st.success(f"✅ Generated {len(generated_prompts)} prompts!")
+                        st.info("💡 Enable Gemini API in Settings for AI-powered prompt generation")
 
                 # Display generated prompts
-                st.success(f"✅ Generated {len(generated_prompts)} AI prompts!")
 
                 for idx, prompt_data in enumerate(generated_prompts, 1):
                     with st.expander(f"{'🖼️' if prompt_data['type'] == 'Image' else '🎬'} Prompt #{idx} - {prompt_data['type']}", expanded=True):
@@ -1665,6 +1782,95 @@ def render_post_analysis(df: pd.DataFrame):
                         st.rerun()
         else:
             st.info("Configure and validate your credentials above to enable batch analysis.")
+
+        # --- GEMINI API SETTINGS SECTION ---
+        st.markdown("---")
+        st.markdown("---")
+        st.subheader("🤖 Gemini AI API Settings")
+        st.markdown("Configure your Google Gemini API key to enable AI-powered prompt generation.")
+
+        st.markdown("---")
+
+        # Gemini API Key Input
+        st.markdown("### Enter Gemini API Key")
+
+        gemini_key_input = st.text_input(
+            "API Key",
+            value=st.session_state.gemini_api_key if st.session_state.gemini_api_key else "",
+            type="password",
+            help="Your Gemini API key from Google AI Studio",
+            placeholder="AIzaSy..."
+        )
+
+        col_save_gemini, col_test_gemini = st.columns(2)
+
+        with col_save_gemini:
+            if st.button("💾 Save Gemini API Key", use_container_width=True):
+                if gemini_key_input and len(gemini_key_input) > 20:
+                    st.session_state.gemini_api_key = gemini_key_input
+                    save_gemini_key(gemini_key_input)
+                    st.session_state.gemini_enabled = True
+                    st.success("Gemini API key saved successfully!")
+                    st.rerun()
+                else:
+                    st.error("Please enter a valid API key")
+
+        with col_test_gemini:
+            if st.button("🧪 Test Connection", use_container_width=True):
+                if st.session_state.gemini_api_key:
+                    with st.spinner("Testing Gemini API connection..."):
+                        try:
+                            import google.generativeai as genai
+                            genai.configure(api_key=st.session_state.gemini_api_key)
+                            model = genai.GenerativeModel('gemini-pro')
+                            response = model.generate_content("Say 'API connection successful!' in exactly 3 words.")
+                            st.success(f"✅ Connection successful! Response: {response.text[:50]}")
+                            st.session_state.gemini_enabled = True
+                        except Exception as e:
+                            st.error(f"❌ Connection failed: {str(e)}")
+                            st.session_state.gemini_enabled = False
+                else:
+                    st.warning("Please enter and save an API key first")
+
+        # Current Gemini Status
+        if st.session_state.gemini_api_key:
+            st.markdown("---")
+            st.markdown("### Current Status")
+            col_status, col_clear = st.columns(2)
+
+            with col_status:
+                if st.session_state.gemini_enabled:
+                    masked_key = st.session_state.gemini_api_key[:10] + "..." + st.session_state.gemini_api_key[-4:]
+                    st.success(f"✅ Gemini AI Enabled: {masked_key}")
+                else:
+                    st.warning("⚠️ API key saved but not tested")
+
+            with col_clear:
+                if st.button("🗑️ Clear Gemini Key", use_container_width=True):
+                    st.session_state.gemini_api_key = None
+                    st.session_state.gemini_enabled = False
+                    clear_gemini_key()
+                    st.info("Gemini API key cleared")
+                    st.rerun()
+
+        st.markdown("---")
+        st.markdown("""
+        ### How to Get Gemini API Key
+        1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
+        2. Sign in with your Google account
+        3. Click **"Get API key"** or **"Create API key"**
+        4. Select **"Create API key in new project"**
+        5. Copy the generated API key (starts with `AIzaSy...`)
+        6. Paste it above and click **"Save Gemini API Key"**
+
+        **Free Tier:**
+        - 60 requests per minute
+        - 1,500 requests per day
+        - Perfect for generating creative prompts!
+        """)
+
+        st.markdown("---")
+        st.info("**Note:** Gemini API key is saved locally and will persist until cleared.")
 
 
 def main():
