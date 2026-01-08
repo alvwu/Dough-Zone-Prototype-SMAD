@@ -27,12 +27,14 @@ def init_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL,
             post_id TEXT,
+            image_file TEXT,
             shortcode TEXT UNIQUE,
             is_video BOOLEAN,
             type_name TEXT,
             comments INTEGER DEFAULT 0,
             likes INTEGER DEFAULT 0,
             posting_date DATETIME,
+            caption TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -90,28 +92,36 @@ def load_csv_to_database(csv_path: str, replace_existing: bool = False):
     # Read CSV
     df = pd.read_csv(csv_path)
 
+    # Drop empty rows
+    df = df.dropna(subset=['username', 'shortcode'])
+
     # Rename columns to match database schema
     column_mapping = {
         'username': 'username',
         'post_id': 'post_id',
+        'image_file': 'image_file',
         'shortcode': 'shortcode',
         'is_video': 'is_video',
         'type_name': 'type_name',
         'comments': 'comments',
         'likes': 'likes',
-        'time_posting_date': 'posting_date'
+        'time_posting_date': 'posting_date',
+        'caption': 'caption'
     }
 
     df = df.rename(columns=column_mapping)
 
     # Convert is_video to boolean
-    df['is_video'] = df['is_video'].map({'TRUE': True, 'FALSE': False, True: True, False: False})
+    df['is_video'] = df['is_video'].map({'TRUE': True, 'FALSE': False, True: True, False: False, 1: True, 0: False})
 
     # Convert post_id to string (handle scientific notation)
     df['post_id'] = df['post_id'].astype(str)
 
-    # Parse datetime
-    df['posting_date'] = pd.to_datetime(df['posting_date'], format='%m/%d/%Y %H:%M')
+    # Parse datetime - handle multiple formats
+    try:
+        df['posting_date'] = pd.to_datetime(df['posting_date'], format='%m/%d/%Y %H:%M')
+    except:
+        df['posting_date'] = pd.to_datetime(df['posting_date'])
 
     if replace_existing:
         cursor = conn.cursor()
@@ -124,17 +134,19 @@ def load_csv_to_database(csv_path: str, replace_existing: bool = False):
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO posts
-                (username, post_id, shortcode, is_video, type_name, comments, likes, posting_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (username, post_id, image_file, shortcode, is_video, type_name, comments, likes, posting_date, caption)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 row['username'],
                 row['post_id'],
+                row.get('image_file', ''),
                 row['shortcode'],
                 row['is_video'],
                 row['type_name'],
                 row['comments'],
                 row['likes'],
-                row['posting_date'].strftime('%Y-%m-%d %H:%M:%S')
+                row['posting_date'].strftime('%Y-%m-%d %H:%M:%S'),
+                row.get('caption', '')
             ))
         except sqlite3.IntegrityError:
             pass  # Skip duplicates
