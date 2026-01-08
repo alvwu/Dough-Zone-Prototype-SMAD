@@ -24,6 +24,7 @@ from data_processing import (
     get_top_performing_posts,
     create_summary_statistics
 )
+from vision_api import analyze_image_with_vision_api, validate_credentials
 
 # Page configuration
 st.set_page_config(
@@ -41,6 +42,12 @@ def init_session_state():
     """Initialize session state variables."""
     if 'db_initialized' not in st.session_state:
         st.session_state.db_initialized = False
+    if 'vision_credentials' not in st.session_state:
+        st.session_state.vision_credentials = None
+    if 'credentials_valid' not in st.session_state:
+        st.session_state.credentials_valid = False
+    if 'vision_results' not in st.session_state:
+        st.session_state.vision_results = {}
 
 
 def load_data():
@@ -499,8 +506,8 @@ def render_image_analysis(df: pd.DataFrame):
     df_processed = get_caption_metrics(df_processed)
 
     # Create tabs
-    tab_gallery, tab_explorer, tab_content = st.tabs(
-        ["📸 Gallery", "🔍 Post Explorer", "📊 Content Insights"]
+    tab_gallery, tab_explorer, tab_content, tab_api = st.tabs(
+        ["📸 Gallery", "🔍 Post Explorer", "📊 Content Insights", "⚙️ API Settings"]
     )
 
     # --- GALLERY TAB ---
@@ -566,6 +573,25 @@ def render_image_analysis(df: pd.DataFrame):
 
             if image_path and image_path.exists():
                 st.image(str(image_path), use_container_width=True)
+
+                # Vision API Analysis Button
+                has_credentials = st.session_state.credentials_valid and st.session_state.vision_credentials
+
+                if has_credentials:
+                    if st.button("🔍 Analyze with Vision API", key=f"analyze_{selected_shortcode}"):
+                        with st.spinner("Analyzing image..."):
+                            try:
+                                result = analyze_image_with_vision_api(
+                                    str(image_path),
+                                    credentials_dict=st.session_state.vision_credentials
+                                )
+                                st.session_state.vision_results[image_file] = result
+                                st.success("Analysis complete!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error: {str(e)}")
+                else:
+                    st.info("Configure API credentials in the API Settings tab to enable Vision analysis")
             else:
                 st.info(f"📷 Image: {image_file or 'Not available'}")
 
@@ -582,6 +608,41 @@ def render_image_analysis(df: pd.DataFrame):
                 st.metric("Total Engagement", f"{int(selected_row['total_engagement']):,}")
 
             st.markdown("---")
+
+            # Google Vision Labels (if analyzed)
+            image_file = selected_row.get('image_file', '')
+            if image_file and image_file in st.session_state.vision_results:
+                vision_data = st.session_state.vision_results[image_file]
+
+                st.markdown("### 🏷️ Google Vision Analysis")
+
+                # Labels
+                if vision_data.get('labels'):
+                    st.markdown("**Detected Labels**")
+                    labels = vision_data['labels'].split(', ')
+                    label_html = " ".join([f"`{label}`" for label in labels])
+                    st.markdown(label_html)
+
+                # Colors
+                if vision_data.get('dominant_colors'):
+                    st.markdown("**Dominant Colors**")
+                    colors = vision_data['dominant_colors'].split(', ')
+                    color_html = " ".join([f"`{color}`" for color in colors])
+                    st.markdown(color_html)
+
+                # Objects
+                if vision_data.get('objects_detected'):
+                    st.markdown("**Objects Detected**")
+                    objects = vision_data['objects_detected'].split(', ')
+                    obj_html = " ".join([f"`{obj}`" for obj in objects])
+                    st.markdown(obj_html)
+
+                # Text
+                if vision_data.get('text_detected'):
+                    st.markdown("**Text in Image**")
+                    st.write(vision_data['text_detected'][:200])
+
+                st.markdown("---")
 
             # Caption
             st.markdown("**Caption**")
@@ -697,6 +758,136 @@ def render_image_analysis(df: pd.DataFrame):
                 if caption and not pd.isna(caption):
                     st.write(caption[:500] + "..." if len(str(caption)) > 500 else caption)
                 st.caption(f"❤️ {int(row['likes']):,} likes | 💬 {int(row['comments'])} comments | 📝 {int(row.get('caption_length', 0))} chars | #️⃣ {int(row.get('hashtag_count', 0))} hashtags")
+
+    # --- API SETTINGS TAB ---
+    with tab_api:
+        st.subheader("Google Vision API Settings")
+        st.markdown("Configure your Google Cloud Vision API credentials to enable automatic image analysis.")
+
+        st.markdown("---")
+
+        # JSON Credentials upload
+        st.markdown("### Upload Service Account JSON")
+        uploaded_file = st.file_uploader(
+            "Drop your service account JSON file here",
+            type=['json'],
+            help="Upload the JSON key file from your Google Cloud service account"
+        )
+
+        if uploaded_file is not None:
+            try:
+                import json
+                credentials_content = uploaded_file.read().decode('utf-8')
+                credentials_dict = json.loads(credentials_content)
+
+                # Validate required fields
+                required_fields = ['private_key', 'client_email', 'project_id']
+                missing_fields = [f for f in required_fields if f not in credentials_dict]
+
+                if missing_fields:
+                    st.error(f"Invalid credentials file. Missing fields: {', '.join(missing_fields)}")
+                else:
+                    st.success(f"Credentials loaded for project: **{credentials_dict.get('project_id')}**")
+                    st.info(f"Service account: {credentials_dict.get('client_email')}")
+
+                    if st.button("💾 Save Credentials", use_container_width=True):
+                        st.session_state.vision_credentials = credentials_dict
+                        with st.spinner("Validating credentials..."):
+                            try:
+                                is_valid = validate_credentials(credentials_dict)
+                                st.session_state.credentials_valid = is_valid
+                                if is_valid:
+                                    st.success("Credentials saved and validated successfully!")
+                                else:
+                                    st.warning("Credentials saved but could not be validated.")
+                            except Exception as e:
+                                st.session_state.credentials_valid = False
+                                st.warning(f"Credentials saved. Validation skipped: {str(e)}")
+                                st.session_state.credentials_valid = True  # Allow usage anyway
+                        st.rerun()
+
+            except json.JSONDecodeError:
+                st.error("Invalid JSON file. Please upload a valid service account JSON file.")
+            except Exception as e:
+                st.error(f"Error reading file: {str(e)}")
+
+        # Current status
+        if st.session_state.vision_credentials:
+            st.markdown("---")
+            st.markdown("### Current Status")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.session_state.credentials_valid:
+                    st.success(f"✅ Connected: {st.session_state.vision_credentials.get('client_email', 'Unknown')}")
+                else:
+                    st.warning(f"⚠️ Credentials loaded: {st.session_state.vision_credentials.get('client_email', 'Unknown')}")
+            with col2:
+                if st.button("🗑️ Clear Credentials", use_container_width=True):
+                    st.session_state.vision_credentials = None
+                    st.session_state.credentials_valid = False
+                    st.session_state.vision_results = {}
+                    st.info("Credentials cleared")
+                    st.rerun()
+
+        st.markdown("---")
+        st.markdown("""
+        ### How to Get Service Account JSON
+        1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+        2. Create a new project or select an existing one
+        3. Enable the **Cloud Vision API**
+        4. Go to **IAM & Admin** → **Service Accounts**
+        5. Click **Create Service Account**
+        6. Give it a name and click **Create**
+        7. Grant the role **Cloud Vision API User**
+        8. Click **Done**, then click on the service account
+        9. Go to **Keys** → **Add Key** → **Create new key** → **JSON**
+        10. Upload the downloaded JSON file above
+        """)
+
+        st.markdown("---")
+        st.markdown("**Note:** Credentials are stored in session memory only and will be cleared when you close the browser.")
+        st.markdown("**Cost:** Google Vision API offers 1,000 free requests per month.")
+
+        # Batch analyze section
+        st.markdown("---")
+        st.subheader("Batch Analyze All Images")
+
+        has_credentials = st.session_state.credentials_valid and st.session_state.vision_credentials
+
+        if has_credentials:
+            # Count images
+            available_images = [f for f in IMAGE_DIR.iterdir() if f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif']] if IMAGE_DIR.exists() else []
+            analyzed_count = len(st.session_state.vision_results)
+
+            st.write(f"Found {len(available_images)} images | {analyzed_count} already analyzed")
+
+            if st.button("🔄 Analyze All Unprocessed Images", use_container_width=True):
+                unprocessed = [img for img in available_images if img.name not in st.session_state.vision_results]
+
+                if not unprocessed:
+                    st.info("All images have already been analyzed!")
+                else:
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+
+                    for i, image_path in enumerate(unprocessed):
+                        status_text.text(f"Analyzing {image_path.name}...")
+                        try:
+                            result = analyze_image_with_vision_api(
+                                str(image_path),
+                                credentials_dict=st.session_state.vision_credentials
+                            )
+                            st.session_state.vision_results[image_path.name] = result
+                        except Exception as e:
+                            st.warning(f"Failed to analyze {image_path.name}: {str(e)}")
+
+                        progress_bar.progress((i + 1) / len(unprocessed))
+
+                    status_text.text("Done!")
+                    st.success(f"Analyzed {len(unprocessed)} images!")
+                    st.rerun()
+        else:
+            st.info("Configure and validate your credentials above to enable batch analysis.")
 
 
 def main():
