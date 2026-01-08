@@ -833,8 +833,7 @@ def generate_prompts_with_gemini(top_performers, vision_results, content_type, s
             base_url="https://openrouter.ai/api/v1",
             api_key=st.session_state.gemini_api_key
         )
-        # Use Gemini 1.5 Flash as primary (more stable free tier)
-        model_name = 'google/gemini-flash-1.5'
+        model_name = 'google/gemini-2.0-flash-exp:free'
 
         # Extract data for context
         common_themes = []
