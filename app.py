@@ -783,7 +783,11 @@ def render_time_analysis(df: pd.DataFrame):
 def generate_prompts_with_gemini(top_performers, vision_results, content_type, style_preference, num_prompts):
     """Generate AI prompts using Gemini API based on top performing content."""
     try:
-        from google import genai
+        try:
+            from google import genai
+        except ImportError:
+            st.error("google-genai package not installed. Please run: pip install google-genai")
+            return []
 
         # Configure Gemini with new SDK
         client = genai.Client(api_key=st.session_state.gemini_api_key)
@@ -1824,7 +1828,13 @@ def render_post_analysis(df: pd.DataFrame):
                     if st.session_state.gemini_api_key:
                         with st.spinner("Testing Gemini API connection..."):
                             try:
-                                from google import genai
+                                try:
+                                    from google import genai
+                                except ImportError:
+                                    st.error("❌ google-genai package not installed. Please run: pip install google-genai")
+                                    st.session_state.gemini_enabled = False
+                                    raise ImportError("google-genai not installed")
+
                                 client = genai.Client(api_key=st.session_state.gemini_api_key)
                                 response = client.models.generate_content(
                                     model='gemini-2.0-flash-exp',
@@ -1832,6 +1842,8 @@ def render_post_analysis(df: pd.DataFrame):
                                 )
                                 st.success(f"✅ Connection successful! Response: {response.text[:50]}")
                                 st.session_state.gemini_enabled = True
+                            except ImportError:
+                                pass  # Already handled above
                             except Exception as e:
                                 st.error(f"❌ Connection failed: {str(e)}")
                                 st.session_state.gemini_enabled = False
