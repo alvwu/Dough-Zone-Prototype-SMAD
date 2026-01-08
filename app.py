@@ -2064,6 +2064,32 @@ def render_post_analysis(df: pd.DataFrame):
             st.markdown("Configure your Google Cloud credentials to enable AI-powered image generation using Imagen 2.")
             st.markdown("---")
 
+            # Option to reuse Vision API credentials
+            if st.session_state.vision_credentials:
+                st.info("💡 You already have Google Cloud credentials configured for Vision API. You can reuse them for Imagen 2!")
+
+                col_reuse, col_upload = st.columns(2)
+                with col_reuse:
+                    if st.button("♻️ Reuse Vision API Credentials", use_container_width=True, type="primary"):
+                        st.session_state.imagen_credentials = st.session_state.vision_credentials
+                        save_imagen_credentials(st.session_state.vision_credentials)
+                        with st.spinner("Validating Imagen credentials..."):
+                            try:
+                                is_valid = test_imagen_connection(st.session_state.vision_credentials)
+                                st.session_state.imagen_enabled = is_valid
+                                if is_valid:
+                                    st.success("✅ Imagen credentials configured successfully!")
+                                else:
+                                    st.warning("⚠️ Credentials saved. Make sure Vertex AI API is enabled in your Google Cloud project.")
+                                    st.session_state.imagen_enabled = True
+                            except Exception as e:
+                                st.session_state.imagen_enabled = True
+                                st.warning(f"Credentials saved. Validation skipped: {str(e)}")
+                        st.rerun()
+
+                st.markdown("**Or upload different credentials below:**")
+                st.markdown("---")
+
             # JSON Credentials upload
             st.markdown("### Upload Service Account JSON")
             uploaded_imagen_file = st.file_uploader(
@@ -2133,21 +2159,31 @@ def render_post_analysis(df: pd.DataFrame):
             st.markdown("---")
             st.markdown("""
             ### How to Get Vertex AI Service Account JSON
+
+            **Option 1: Reuse Vision API Credentials (Recommended)**
+            If you already configured Vision API credentials above, just click "♻️ Reuse Vision API Credentials" button.
+            Make sure to enable **Vertex AI API** in your Google Cloud project.
+
+            **Option 2: Create New Service Account**
             1. Go to [Google Cloud Console](https://console.cloud.google.com/)
             2. Create a new project or select an existing one
-            3. Enable the **Vertex AI API**
+            3. Enable **both** the **Cloud Vision API** and **Vertex AI API**
             4. Go to **IAM & Admin** → **Service Accounts**
             5. Click **Create Service Account**
             6. Give it a name and click **Create**
-            7. Grant the role **Vertex AI User**
+            7. Grant these roles:
+               - **Cloud Vision API User** (for image analysis)
+               - **Vertex AI User** (for Imagen 2)
             8. Click **Done**, then click on the service account
             9. Go to **Keys** → **Add Key** → **Create new key** → **JSON**
-            10. Upload the downloaded JSON file above
+            10. Upload the downloaded JSON file in both Vision API and Imagen 2 sections
 
             **Important Notes:**
+            - **Same credentials work for both APIs** - you can use one service account for everything
             - New Google Cloud accounts get **$300 in free credits**
-            - Imagen 2 pricing: ~$0.020 per image (standard resolution)
-            - Make sure **Vertex AI API** is enabled in your project
+            - Vision API: 1,000 free requests/month, then ~$1.50 per 1,000 images
+            - Imagen 2: ~$0.020 per generated image (standard resolution)
+            - Make sure both APIs are enabled in your project
             """)
 
             st.markdown("---")
