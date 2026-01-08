@@ -907,7 +907,7 @@ def render_image_analysis(df: pd.DataFrame):
 
                     # Invisible/minimal button for clicking
                     if st.button(
-                        "👆 Click Image Above",
+                        "Click",
                         key=f"thumb_{shortcode}",
                         use_container_width=True,
                         type="primary" if is_selected else "secondary"
