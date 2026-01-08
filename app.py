@@ -82,9 +82,16 @@ def load_css():
         html, body, [class*="css"]  {
             font-family: 'Space Grotesk', sans-serif;
         }
-        /* Hide password visibility toggle button */
-        button[kind="icon"][data-testid="baseButton-icon"] {
+        /* Hide password visibility toggle button - multiple selectors to ensure it works */
+        button[kind="icon"][data-testid="baseButton-icon"],
+        button[data-testid="baseButton-icon"],
+        div[data-testid="stTextInput"] button[kind="icon"],
+        div[data-testid="stTextInput"] button[aria-label*="password"],
+        input[type="password"] + button {
             display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
         }
         .app-hero {
             background: linear-gradient(120deg, #f4c095 0%, #f9e2c7 45%, #d9c2b3 100%);
