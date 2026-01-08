@@ -783,11 +783,11 @@ def render_time_analysis(df: pd.DataFrame):
 def generate_prompts_with_gemini(top_performers, vision_results, content_type, style_preference, num_prompts):
     """Generate AI prompts using Gemini API based on top performing content."""
     try:
-        import google.generativeai as genai
+        from google import genai
 
-        # Configure Gemini
-        genai.configure(api_key=st.session_state.gemini_api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Configure Gemini with new SDK
+        client = genai.Client(api_key=st.session_state.gemini_api_key)
+        model_name = 'gemini-2.0-flash-exp'
 
         # Extract data for context
         common_themes = []
@@ -844,8 +844,11 @@ def generate_prompts_with_gemini(top_performers, vision_results, content_type, s
 
 Format your response as a numbered list with each prompt on a new line. Start each line with the number followed by a period."""
 
-        # Call Gemini API
-        response = model.generate_content(gemini_prompt)
+        # Call Gemini API with new SDK
+        response = client.models.generate_content(
+            model=model_name,
+            contents=gemini_prompt
+        )
         prompts_text = response.text
 
         # Parse response into individual prompts
@@ -1821,10 +1824,12 @@ def render_post_analysis(df: pd.DataFrame):
                     if st.session_state.gemini_api_key:
                         with st.spinner("Testing Gemini API connection..."):
                             try:
-                                import google.generativeai as genai
-                                genai.configure(api_key=st.session_state.gemini_api_key)
-                                model = genai.GenerativeModel('gemini-1.5-flash')
-                                response = model.generate_content("Say 'API connection successful!' in exactly 3 words.")
+                                from google import genai
+                                client = genai.Client(api_key=st.session_state.gemini_api_key)
+                                response = client.models.generate_content(
+                                    model='gemini-2.0-flash-exp',
+                                    contents="Say 'API connection successful!' in exactly 3 words."
+                                )
                                 st.success(f"✅ Connection successful! Response: {response.text[:50]}")
                                 st.session_state.gemini_enabled = True
                             except Exception as e:
