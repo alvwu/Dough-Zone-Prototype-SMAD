@@ -2003,7 +2003,7 @@ def render_post_analysis(df: pd.DataFrame):
                                     api_key=st.session_state.gemini_api_key
                                 )
                                 response = client.chat.completions.create(
-                                    model='google/gemini-flash-1.5',
+                                    model='google/gemini-2.0-flash-exp:free',
                                     messages=[
                                         {"role": "user", "content": "Say 'API connection successful!' in exactly 3 words."}
                                     ]
