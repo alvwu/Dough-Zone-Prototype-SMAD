@@ -833,7 +833,7 @@ def generate_prompts_with_gemini(top_performers, vision_results, content_type, s
             base_url="https://openrouter.ai/api/v1",
             api_key=st.session_state.gemini_api_key
         )
-        model_name = 'google/gemini-2.0-flash-exp:free'
+        model_name = 'google/gemini-2.0-flash-exp'
 
         # Extract data for context
         common_themes = []
@@ -2003,7 +2003,7 @@ def render_post_analysis(df: pd.DataFrame):
                                     api_key=st.session_state.gemini_api_key
                                 )
                                 response = client.chat.completions.create(
-                                    model='google/gemini-2.0-flash-exp:free',
+                                    model='google/gemini-2.0-flash-exp',
                                     messages=[
                                         {"role": "user", "content": "Say 'API connection successful!' in exactly 3 words."}
                                     ]
