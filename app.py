@@ -781,17 +781,16 @@ def render_time_analysis(df: pd.DataFrame):
 
 
 def generate_prompts_with_gemini(top_performers, vision_results, content_type, style_preference, num_prompts):
-    """Generate AI prompts using Gemini API based on top performing content."""
+    """Generate AI prompts using OpenRouter API with Gemini 2.0 Flash based on top performing content."""
     try:
-        try:
-            from google import genai
-        except ImportError:
-            st.error("google-genai package not installed. Please run: pip install google-genai")
-            return []
+        from openai import OpenAI
 
-        # Configure Gemini with new SDK
-        client = genai.Client(api_key=st.session_state.gemini_api_key)
-        model_name = 'gemini-1.5-flash'
+        # Configure OpenRouter client
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=st.session_state.gemini_api_key
+        )
+        model_name = 'google/gemini-2.0-flash-exp:free'
 
         # Extract data for context
         common_themes = []
@@ -848,12 +847,14 @@ def generate_prompts_with_gemini(top_performers, vision_results, content_type, s
 
 Format your response as a numbered list with each prompt on a new line. Start each line with the number followed by a period."""
 
-        # Call Gemini API with new SDK
-        response = client.models.generate_content(
+        # Call OpenRouter API
+        response = client.chat.completions.create(
             model=model_name,
-            contents=gemini_prompt
+            messages=[
+                {"role": "user", "content": gemini_prompt}
+            ]
         )
-        prompts_text = response.text
+        prompts_text = response.choices[0].message.content
 
         # Parse response into individual prompts
         generated_prompts = []
@@ -1549,7 +1550,7 @@ def render_post_analysis(df: pd.DataFrame):
                                 })
 
                         st.success(f"✅ Generated {len(generated_prompts)} prompts!")
-                        st.info("💡 Enable Gemini API in Settings for AI-powered prompt generation")
+                        st.info("💡 Enable AI API in Settings for AI-powered prompt generation with Gemini 2.0")
 
                 # Display generated prompts
 
@@ -1794,31 +1795,31 @@ def render_post_analysis(df: pd.DataFrame):
             else:
                 st.info("Configure and validate your credentials above to enable batch analysis.")
 
-        # --- GEMINI API SETTINGS SECTION ---
-        with st.expander("🤖 Gemini AI API Settings", expanded=False):
-            st.markdown("Configure your Google Gemini API key to enable AI-powered prompt generation.")
+        # --- AI API SETTINGS SECTION ---
+        with st.expander("🤖 AI API Settings (OpenRouter)", expanded=False):
+            st.markdown("Configure your OpenRouter API key to enable AI-powered prompt generation using Gemini 2.0 Flash.")
             st.markdown("---")
 
-            # Gemini API Key Input
-            st.markdown("### Enter Gemini API Key")
+            # OpenRouter API Key Input
+            st.markdown("### Enter OpenRouter API Key")
 
             gemini_key_input = st.text_input(
                 "API Key",
                 value=st.session_state.gemini_api_key if st.session_state.gemini_api_key else "",
                 type="password",
-                help="Your Gemini API key from Google AI Studio",
-                placeholder="AIzaSy..."
+                help="Your OpenRouter API key from openrouter.ai",
+                placeholder="sk-or-v1-..."
             )
 
             col_save_gemini, col_test_gemini = st.columns(2)
 
             with col_save_gemini:
-                if st.button("💾 Save Gemini API Key", use_container_width=True):
+                if st.button("💾 Save API Key", use_container_width=True):
                     if gemini_key_input and len(gemini_key_input) > 20:
                         st.session_state.gemini_api_key = gemini_key_input
                         save_gemini_key(gemini_key_input)
                         st.session_state.gemini_enabled = True
-                        st.success("Gemini API key saved successfully!")
+                        st.success("OpenRouter API key saved successfully!")
                         st.rerun()
                     else:
                         st.error("Please enter a valid API key")
@@ -1826,31 +1827,30 @@ def render_post_analysis(df: pd.DataFrame):
             with col_test_gemini:
                 if st.button("🧪 Test Connection", use_container_width=True):
                     if st.session_state.gemini_api_key:
-                        with st.spinner("Testing Gemini API connection..."):
+                        with st.spinner("Testing OpenRouter API connection..."):
                             try:
-                                try:
-                                    from google import genai
-                                except ImportError:
-                                    st.error("❌ google-genai package not installed. Please run: pip install google-genai")
-                                    st.session_state.gemini_enabled = False
-                                    raise ImportError("google-genai not installed")
+                                from openai import OpenAI
 
-                                client = genai.Client(api_key=st.session_state.gemini_api_key)
-                                response = client.models.generate_content(
-                                    model='gemini-1.5-flash',
-                                    contents="Say 'API connection successful!' in exactly 3 words."
+                                client = OpenAI(
+                                    base_url="https://openrouter.ai/api/v1",
+                                    api_key=st.session_state.gemini_api_key
                                 )
-                                st.success(f"✅ Connection successful! Response: {response.text[:50]}")
+                                response = client.chat.completions.create(
+                                    model='google/gemini-2.0-flash-exp:free',
+                                    messages=[
+                                        {"role": "user", "content": "Say 'API connection successful!' in exactly 3 words."}
+                                    ]
+                                )
+                                result_text = response.choices[0].message.content
+                                st.success(f"✅ Connection successful! Response: {result_text[:50]}")
                                 st.session_state.gemini_enabled = True
-                            except ImportError:
-                                pass  # Already handled above
                             except Exception as e:
                                 st.error(f"❌ Connection failed: {str(e)}")
                                 st.session_state.gemini_enabled = False
                     else:
                         st.warning("Please enter and save an API key first")
 
-            # Current Gemini Status
+            # Current API Status
             if st.session_state.gemini_api_key:
                 st.markdown("---")
                 st.markdown("### Current Status")
@@ -1859,36 +1859,37 @@ def render_post_analysis(df: pd.DataFrame):
                 with col_status:
                     if st.session_state.gemini_enabled:
                         masked_key = st.session_state.gemini_api_key[:10] + "..." + st.session_state.gemini_api_key[-4:]
-                        st.success(f"✅ Gemini AI Enabled: {masked_key}")
+                        st.success(f"✅ AI Enabled (Gemini 2.0): {masked_key}")
                     else:
                         st.warning("⚠️ API key saved but not tested")
 
                 with col_clear:
-                    if st.button("🗑️ Clear Gemini Key", use_container_width=True):
+                    if st.button("🗑️ Clear API Key", use_container_width=True):
                         st.session_state.gemini_api_key = None
                         st.session_state.gemini_enabled = False
                         clear_gemini_key()
-                        st.info("Gemini API key cleared")
+                        st.info("API key cleared")
                         st.rerun()
 
             st.markdown("---")
             st.markdown("""
-            ### How to Get Gemini API Key
-            1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
-            2. Sign in with your Google account
-            3. Click **"Get API key"** or **"Create API key"**
-            4. Select **"Create API key in new project"**
-            5. Copy the generated API key (starts with `AIzaSy...`)
-            6. Paste it above and click **"Save Gemini API Key"**
+            ### How to Get OpenRouter API Key
+            1. Go to [OpenRouter](https://openrouter.ai/)
+            2. Sign in or create an account (free!)
+            3. Go to **Keys** section
+            4. Click **"Create Key"**
+            5. Copy the generated API key (starts with `sk-or-v1-...`)
+            6. Paste it above and click **"Save API Key"**
 
-            **Free Tier:**
-            - 60 requests per minute
-            - 1,500 requests per day
-            - Perfect for generating creative prompts!
+            **Benefits:**
+            - **Free tier** with generous limits
+            - Access to **Gemini 2.0 Flash** (fast & powerful)
+            - More reliable than direct Gemini API
+            - Unified API for multiple AI models
             """)
 
             st.markdown("---")
-            st.info("**Note:** Gemini API key is saved locally and will persist until cleared.")
+            st.info("**Note:** API key is saved locally and will persist until cleared.")
 
 
 def main():
