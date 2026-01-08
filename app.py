@@ -583,13 +583,15 @@ def render_engagement_analysis(df: pd.DataFrame):
         df_processed,
         x='likes',
         y='comments',
-        color='content_type',
+        color='total_engagement',
         size='total_engagement',
         hover_data=hover_data,
-        title='Engagement Correlation by Content Type',
-        color_discrete_sequence=WARM_SEQUENCE
+        title='Engagement Correlation (Color = Total Engagement)',
+        color_continuous_scale=WARM_SCALE,
+        labels={'total_engagement': 'Total Engagement'}
     )
     fig.update_layout(height=500)
+    fig.update_coloraxes(colorbar_title="Engagement")
     st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("---")
