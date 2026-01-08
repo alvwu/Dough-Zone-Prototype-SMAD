@@ -89,8 +89,11 @@ def load_csv_to_database(csv_path: str, replace_existing: bool = False):
     """Load CSV data into the posts table."""
     conn = get_connection()
 
-    # Read CSV
-    df = pd.read_csv(csv_path)
+    # Read CSV with encoding handling for special characters (emojis, etc.)
+    try:
+        df = pd.read_csv(csv_path, encoding='utf-8', on_bad_lines='skip')
+    except UnicodeDecodeError:
+        df = pd.read_csv(csv_path, encoding='latin-1', on_bad_lines='skip')
 
     # Drop empty rows
     df = df.dropna(subset=['username', 'shortcode'])
