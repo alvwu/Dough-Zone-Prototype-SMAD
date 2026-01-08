@@ -7,8 +7,11 @@ A Streamlit-based analytics dashboard for analyzing social media engagement data
 - **Overview Dashboard**: Quick stats, engagement metrics, and data summary
 - **Engagement Analysis**: Detailed engagement metrics, content type performance, and top posts
 - **Time Analysis**: Posting time patterns, hourly/daily heatmaps, and trend analysis
-- **Image Analysis**: Manual and automated image characteristic tagging with Google Vision API
-- **Prediction Model**: ML-based engagement prediction using Random Forest, Gradient Boosting, or Linear Regression
+- **Image Analysis**:
+  - Gallery view of top performing posts
+  - Post Explorer with detailed engagement metrics
+  - Content Insights with dominant visual labels, signature color palette, and data-driven recommendations
+  - Google Vision API integration for automatic image analysis
 - **Data Management**: Import/export data, database management
 
 ## Installation
@@ -86,7 +89,10 @@ The dashboard supports two authentication methods for Google Cloud Vision API:
 7. Go to **Keys** > **Add Key** > **Create new key** > **JSON**
 8. Upload the JSON file in the dashboard's API Settings tab
 
-**Note:** Google Vision API offers 1,000 free requests per month.
+**Note:**
+- Google Vision API offers 1,000 free requests per month.
+- Credentials are saved locally and persist until cleared or the app is restarted.
+- Vision analysis results are cached, so visitors can see insights without needing API credentials.
 
 ## Usage
 
@@ -104,20 +110,15 @@ The dashboard supports two authentication methods for Google Cloud Vision API:
 
 ### Image Analysis
 
-1. Go to **Image Analysis** tab
-2. Add images to the `/image` folder
-3. Either:
-   - Manually enter image characteristics (labels, colors, objects)
-   - Configure Vision API and use auto-analysis
-4. View insights connecting image characteristics to engagement
-
-### Building Prediction Models
-
-1. Navigate to **Prediction Model**
-2. Select model type (Random Forest, Gradient Boosting, or Linear)
-3. Click **Train Model**
-4. View metrics, feature importance, and optimal posting recommendations
-5. Use the prediction tool for hypothetical posts
+1. Go to **Image Analysis** page
+2. **Gallery Tab**: Browse top performing posts with engagement metrics
+3. **Post Explorer Tab**: Select any post to view detailed stats, caption analysis, and Vision API labels
+4. **Content Insights Tab**: View aggregated insights:
+   - Dominant Visual Labels - most common elements across all images
+   - Signature Color Palette - brand color patterns
+   - Content Recommendations - data-driven suggestions for content strategy
+   - Hashtag analysis and caption length vs engagement
+5. **API Settings Tab**: Configure Vision API credentials and batch analyze images
 
 ## Dependencies
 
