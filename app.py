@@ -1613,82 +1613,82 @@ def render_post_analysis(df: pd.DataFrame):
                         st.info("💡 Enable AI API in Settings for AI-powered prompt generation with Gemini 2.0")
 
                 # Display generated prompts
+                if st.session_state.ai_generated_prompts:
+                    for idx, prompt_data in enumerate(st.session_state.ai_generated_prompts, 1):
+                        with st.expander(f"{'🖼️' if prompt_data['type'] == 'Image' else '🎬'} Prompt #{idx} - {prompt_data['type']}", expanded=True):
+                            st.text_area(
+                                "AI Prompt",
+                                prompt_data['prompt'],
+                                height=100,
+                                key=f"prompt_{idx}",
+                                help="Copy this prompt to use in AI image/video generators like Midjourney, DALL-E, Runway, etc."
+                            )
 
-                for idx, prompt_data in enumerate(st.session_state.ai_generated_prompts, 1):
-                    with st.expander(f"{'🖼️' if prompt_data['type'] == 'Image' else '🎬'} Prompt #{idx} - {prompt_data['type']}", expanded=True):
-                        st.text_area(
-                            "AI Prompt",
-                            prompt_data['prompt'],
-                            height=100,
-                            key=f"prompt_{idx}",
-                            help="Copy this prompt to use in AI image/video generators like Midjourney, DALL-E, Runway, etc."
-                        )
+                            col_copy, col_tips = st.columns([1, 2])
+                            with col_copy:
+                                st.code(prompt_data['prompt'], language=None)
+                            with col_tips:
+                                st.caption(f"**Style:** {prompt_data['style']}")
+                                st.caption("**Tools:** Midjourney, DALL-E 3, Stable Diffusion, Runway ML")
 
-                        col_copy, col_tips = st.columns([1, 2])
-                        with col_copy:
-                            st.code(prompt_data['prompt'], language=None)
-                        with col_tips:
-                            st.caption(f"**Style:** {prompt_data['style']}")
-                            st.caption("**Tools:** Midjourney, DALL-E 3, Stable Diffusion, Runway ML")
+                            # Imagen 2 generation option (only for images)
+                            if prompt_data['type'] == 'Image' and st.session_state.imagen_enabled:
+                                st.markdown("---")
+                                col_gen, col_settings = st.columns([1, 1])
 
-                        # Imagen 2 generation option (only for images)
-                        if prompt_data['type'] == 'Image' and st.session_state.imagen_enabled:
-                            st.markdown("---")
-                            col_gen, col_settings = st.columns([1, 1])
+                                with col_settings:
+                                    aspect_ratio = st.selectbox(
+                                        "Aspect Ratio",
+                                        ["1:1", "9:16", "16:9", "4:3", "3:4"],
+                                        key=f"aspect_{idx}",
+                                        help="Image dimensions"
+                                    )
 
-                            with col_settings:
-                                aspect_ratio = st.selectbox(
-                                    "Aspect Ratio",
-                                    ["1:1", "9:16", "16:9", "4:3", "3:4"],
-                                    key=f"aspect_{idx}",
-                                    help="Image dimensions"
-                                )
+                                with col_gen:
+                                    if st.button(f"🎨 Generate with Imagen 2", key=f"gen_imagen_{idx}", use_container_width=True, type="primary"):
+                                        with st.spinner("Generating image with Imagen 2..."):
+                                            try:
+                                                # Create output directory
+                                                GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
 
-                            with col_gen:
-                                if st.button(f"🎨 Generate with Imagen 2", key=f"gen_imagen_{idx}", use_container_width=True, type="primary"):
-                                    with st.spinner("Generating image with Imagen 2..."):
-                                        try:
-                                            # Create output directory
-                                            GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
+                                                # Generate image
+                                                result = generate_image_with_imagen(
+                                                    prompt=prompt_data['prompt'],
+                                                    credentials_dict=st.session_state.imagen_credentials,
+                                                    number_of_images=1,
+                                                    aspect_ratio=aspect_ratio
+                                                )
 
-                                            # Generate image
-                                            result = generate_image_with_imagen(
-                                                prompt=prompt_data['prompt'],
-                                                credentials_dict=st.session_state.imagen_credentials,
-                                                number_of_images=1,
-                                                aspect_ratio=aspect_ratio
-                                            )
+                                                if result['images']:
+                                                    # Save the generated image
+                                                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                                    image_filename = f"imagen_{timestamp}.png"
+                                                    image_path = GENERATED_IMAGES_DIR / image_filename
 
-                                            if result['images']:
-                                                # Save the generated image
-                                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                                image_filename = f"imagen_{timestamp}.png"
-                                                image_path = GENERATED_IMAGES_DIR / image_filename
+                                                    save_generated_image(result['images'][0], str(image_path))
 
-                                                save_generated_image(result['images'][0], str(image_path))
+                                                    # Display the generated image
+                                                    st.success(f"✅ Image generated successfully!")
+                                                    st.image(str(image_path), caption=f"Generated: {prompt_data['prompt'][:50]}...", use_container_width=True)
 
-                                                # Display the generated image
-                                                st.success(f"✅ Image generated successfully!")
-                                                st.image(str(image_path), caption=f"Generated: {prompt_data['prompt'][:50]}...", use_container_width=True)
+                                                    # Add to session state
+                                                    st.session_state.generated_images.append({
+                                                        'path': str(image_path),
+                                                        'prompt': prompt_data['prompt'],
+                                                        'timestamp': timestamp
+                                                    })
 
-                                                # Add to session state
-                                                st.session_state.generated_images.append({
-                                                    'path': str(image_path),
-                                                    'prompt': prompt_data['prompt'],
-                                                    'timestamp': timestamp
-                                                })
-
-                                                # Show cost estimate
-                                                cost = estimate_imagen_cost(1)
-                                                st.caption(f"💰 Estimated cost: ${cost:.3f}")
-                                            else:
-                                                st.error("No images were generated")
-                                        except Exception as e:
-                                            st.error(f"Generation failed: {str(e)}")
-                                            if "quota" in str(e).lower() or "billing" in str(e).lower():
-                                                st.warning("💡 Make sure billing is enabled and you have remaining credits in your Google Cloud account.")
-                        elif prompt_data['type'] == 'Image' and not st.session_state.imagen_enabled:
-                            st.info("💡 Configure Imagen 2 in API Settings to generate images directly")
+                                                    # Show cost estimate
+                                                    cost = estimate_imagen_cost(1)
+                                                    st.caption(f"💰 Estimated cost: ${cost:.3f}")
+                                                else:
+                                                    st.error("No images were generated")
+                                            except Exception as e:
+                                                st.error(f"Generation failed: {str(e)}")
+                                                if "quota" in str(e).lower() or "billing" in str(e).lower():
+                                                    st.warning("💡 Make sure billing is enabled and you have remaining credits in your Google Cloud account.")
+                            elif prompt_data['type'] == 'Image' and not st.session_state.imagen_enabled:
+                                st.info("💡 Configure Imagen 2 in API Settings to generate images directly")
 
         else:  # Custom Parameters mode
             st.info("Customize your AI prompt generation parameters")
