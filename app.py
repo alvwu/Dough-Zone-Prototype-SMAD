@@ -603,24 +603,40 @@ def render_image_analysis(df: pd.DataFrame):
     # --- POST EXPLORER TAB ---
     with tab_explorer:
         st.subheader("Post Explorer")
-        st.markdown("Select a post to view detailed information")
+        st.markdown("Click on a thumbnail to view detailed information")
 
-        # Create display options for selectbox
-        post_options = []
-        for _, row in df_processed.iterrows():
-            image_file = row.get('image_file', '')
-            display_name = image_file if image_file else row['shortcode']
-            post_options.append((display_name, row['shortcode']))
+        # Initialize selected post in session state
+        if 'selected_explorer_post' not in st.session_state:
+            st.session_state.selected_explorer_post = df_processed.iloc[0]['shortcode']
 
-        # Selectbox
-        selected_display = st.selectbox(
-            "Select a post",
-            options=[p[0] for p in post_options],
-            format_func=lambda x: x
-        )
+        # Thumbnail grid (6 columns for compact view)
+        st.markdown("#### Select a Post")
+        thumb_cols = st.columns(6)
+        for idx, (_, row) in enumerate(df_processed.iterrows()):
+            with thumb_cols[idx % 6]:
+                image_file = row.get('image_file', '')
+                image_path = IMAGE_DIR / image_file if image_file else None
+                shortcode = row['shortcode']
+
+                # Check if this post is selected
+                is_selected = st.session_state.selected_explorer_post == shortcode
+
+                # Display thumbnail with selection indicator
+                if image_path and image_path.exists():
+                    st.image(str(image_path), use_container_width=True)
+                else:
+                    st.markdown(f"📷 {image_file or 'N/A'}")
+
+                # Button to select this post
+                btn_label = f"✓ {image_file}" if is_selected else image_file or shortcode[:8]
+                if st.button(btn_label, key=f"thumb_{shortcode}", use_container_width=True):
+                    st.session_state.selected_explorer_post = shortcode
+                    st.rerun()
+
+        st.markdown("---")
 
         # Get the selected row
-        selected_shortcode = next(p[1] for p in post_options if p[0] == selected_display)
+        selected_shortcode = st.session_state.selected_explorer_post
         selected_row = df_processed[df_processed['shortcode'] == selected_shortcode].iloc[0]
 
         # Layout: Image | Details
