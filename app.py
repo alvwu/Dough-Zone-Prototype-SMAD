@@ -358,7 +358,7 @@ def render_sidebar():
     # Navigation - 4 pages now
     page = st.sidebar.radio(
         "Navigation",
-        ["Overview", "Engagement Analysis", "Time Analysis", "Image Analysis"]
+        ["Overview", "Engagement Analysis", "Time Analysis", "Post Analysis"]
     )
 
     st.sidebar.markdown("---")
@@ -750,9 +750,9 @@ def render_time_analysis(df: pd.DataFrame):
         st.dataframe(time_data, use_container_width=True)
 
 
-def render_image_analysis(df: pd.DataFrame):
-    """Render the image analysis page with Post Explorer style."""
-    st.title("🖼️ Image Analysis")
+def render_post_analysis(df: pd.DataFrame):
+    """Render the post analysis page with Post Explorer and AI Prompt Generator."""
+    st.title("🖼️ Post Analysis")
     st.markdown("---")
 
     if len(df) == 0:
@@ -764,8 +764,8 @@ def render_image_analysis(df: pd.DataFrame):
     df_processed = get_caption_metrics(df_processed)
 
     # Create tabs
-    tab_gallery, tab_explorer, tab_content, tab_api = st.tabs(
-        ["📸 Gallery", "🔍 Post Explorer", "📊 Content Insights", "⚙️ API Settings"]
+    tab_gallery, tab_explorer, tab_content, tab_ai_prompt, tab_api = st.tabs(
+        ["📸 Gallery", "🔍 Post Explorer", "📊 Content Insights", "🤖 AI Prompt Generator", "⚙️ API Settings"]
     )
 
     # --- GALLERY TAB ---
