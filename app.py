@@ -845,25 +845,32 @@ def render_image_analysis(df: pd.DataFrame):
         # Horizontal scrollable thumbnail selector using columns
         st.markdown("Scroll horizontally to browse all posts →")
 
-        # Create a container with custom CSS for horizontal scrolling
+        # Create a container with custom CSS for horizontal scrolling and clickable images
         st.markdown("""
             <style>
             div[data-testid="column"] {
-                min-width: 120px !important;
+                min-width: 140px !important;
             }
-            .thumbnail-container {
-                display: flex;
-                overflow-x: auto;
-                gap: 10px;
-                padding: 10px 0;
+            /* Make images look clickable */
+            div[data-testid="stImage"] {
+                cursor: pointer;
+                transition: transform 0.2s, box-shadow 0.2s;
+                border-radius: 8px;
             }
-            .stButton button {
-                padding: 0 !important;
-                border: none !important;
-                background: transparent !important;
+            div[data-testid="stImage"]:hover {
+                transform: scale(1.05);
+                box-shadow: 0 4px 12px rgba(180, 100, 50, 0.3);
             }
-            .stButton button:hover {
-                background: transparent !important;
+            /* Hide button text but keep button clickable over image */
+            .image-button button {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                opacity: 0;
+                cursor: pointer;
+                z-index: 10;
             }
             </style>
         """, unsafe_allow_html=True)
@@ -880,15 +887,27 @@ def render_image_analysis(df: pd.DataFrame):
                 image_file = row.get('image_file', '')
                 image_path = IMAGE_DIR / image_file if image_file else None
 
-                # Create clickable container
+                # Clickable image container - put button FIRST, then image appears inside via HTML
                 if image_path and image_path.exists():
-                    # Display the image first
-                    st.image(str(image_path), use_container_width=True)
+                    # Read image and convert to base64 for embedding in button
+                    with open(image_path, "rb") as img_file:
+                        img_data = base64.b64encode(img_file.read()).decode()
 
-                    # Button directly below image to select it
-                    button_label = "✓ Selected" if is_selected else "Select"
+                    # Create HTML button that contains the image
+                    border_style = "3px solid #b65532" if is_selected else "2px solid #e0e0e0"
+                    bg_color = "#f4c095" if is_selected else "#fff8f0"
+
+                    # Use markdown to show clickable image, then button below
+                    st.markdown(f"""
+                        <div style="border: {border_style}; border-radius: 8px; padding: 4px; background: {bg_color}; margin-bottom: 4px;">
+                            <img src="data:image/jpeg;base64,{img_data}" style="width: 100%; border-radius: 6px; display: block;">
+                            {('<div style="text-align: center; margin-top: 4px; font-size: 0.75rem; color: #2d1b12; font-weight: 600;">✓ SELECTED</div>') if is_selected else ''}
+                        </div>
+                    """, unsafe_allow_html=True)
+
+                    # Invisible/minimal button for clicking
                     if st.button(
-                        button_label,
+                        "👆 Click Image Above",
                         key=f"thumb_{shortcode}",
                         use_container_width=True,
                         type="primary" if is_selected else "secondary"
@@ -897,12 +916,10 @@ def render_image_analysis(df: pd.DataFrame):
                         st.rerun()
                 else:
                     # Placeholder for missing images
-                    st.info("No Image")
                     if st.button(
-                        "✓ Selected" if is_selected else "Select",
+                        "📷 No Image",
                         key=f"thumb_{shortcode}",
-                        use_container_width=True,
-                        type="primary" if is_selected else "secondary"
+                        use_container_width=True
                     ):
                         st.session_state.selected_explorer_post = shortcode
                         st.rerun()
