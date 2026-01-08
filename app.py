@@ -39,6 +39,28 @@ IMAGE_DIR = Path(__file__).parent / "image"
 CREDENTIALS_FILE = Path(__file__).parent / ".vision_credentials.json"
 VISION_CACHE_FILE = Path(__file__).parent / ".vision_cache.json"
 
+# Warm orange color palette for charts
+CHART_COLORS = {
+    'primary': '#e8a66d',      # Warm orange
+    'secondary': '#f4c095',    # Light peach
+    'accent': '#b65532',       # Deep rust
+    'highlight': '#d4925c',    # Golden brown
+    'muted': '#d9c2b3',        # Warm beige
+    'dark': '#2d1b12',         # Dark brown
+}
+
+# Color sequences for categorical data
+WARM_SEQUENCE = ['#e8a66d', '#b65532', '#f4c095', '#d4925c', '#8B4513', '#d9c2b3', '#c17f4e', '#a0522d']
+
+# Color scale for continuous data (warm gradient)
+WARM_SCALE = [
+    [0.0, '#fff8f0'],
+    [0.25, '#f4c095'],
+    [0.5, '#e8a66d'],
+    [0.75, '#d4925c'],
+    [1.0, '#b65532']
+]
+
 
 def load_css():
     """Load custom CSS styling with warm orange theme."""
@@ -422,7 +444,8 @@ def render_overview(df: pd.DataFrame):
             x='date',
             y=['total_likes', 'total_comments'],
             title='Daily Engagement Trend',
-            labels={'value': 'Count', 'date': 'Date', 'variable': 'Metric'}
+            labels={'value': 'Count', 'date': 'Date', 'variable': 'Metric'},
+            color_discrete_sequence=[CHART_COLORS['primary'], CHART_COLORS['accent']]
         )
         fig.update_layout(height=400)
         st.plotly_chart(fig, use_container_width=True)
@@ -439,7 +462,8 @@ def render_overview(df: pd.DataFrame):
         fig = px.pie(
             values=content_counts.values,
             names=content_counts.index,
-            title='Video vs Image Posts'
+            title='Video vs Image Posts',
+            color_discrete_sequence=WARM_SEQUENCE
         )
         fig.update_layout(height=400)
         st.plotly_chart(fig, use_container_width=True)
@@ -519,7 +543,7 @@ def render_engagement_analysis(df: pd.DataFrame):
             x='likes',
             nbins=20,
             title='Distribution of Likes',
-            color_discrete_sequence=['#1f77b4']
+            color_discrete_sequence=[CHART_COLORS['primary']]
         )
         fig.update_layout(height=350)
         st.plotly_chart(fig, use_container_width=True)
@@ -531,7 +555,7 @@ def render_engagement_analysis(df: pd.DataFrame):
             x='comments',
             nbins=20,
             title='Distribution of Comments',
-            color_discrete_sequence=['#ff7f0e']
+            color_discrete_sequence=[CHART_COLORS['accent']]
         )
         fig.update_layout(height=350)
         st.plotly_chart(fig, use_container_width=True)
@@ -562,7 +586,8 @@ def render_engagement_analysis(df: pd.DataFrame):
         color='content_type',
         size='total_engagement',
         hover_data=hover_data,
-        title='Engagement Correlation by Content Type'
+        title='Engagement Correlation by Content Type',
+        color_discrete_sequence=WARM_SEQUENCE
     )
     fig.update_layout(height=500)
     st.plotly_chart(fig, use_container_width=True)
@@ -585,11 +610,11 @@ def render_engagement_analysis(df: pd.DataFrame):
     fig = make_subplots(rows=1, cols=2, subplot_titles=('Average Likes', 'Average Comments'))
 
     fig.add_trace(
-        go.Bar(name='Likes', x=content_analysis.index, y=content_analysis['Avg Likes']),
+        go.Bar(name='Likes', x=content_analysis.index, y=content_analysis['Avg Likes'], marker_color=CHART_COLORS['primary']),
         row=1, col=1
     )
     fig.add_trace(
-        go.Bar(name='Comments', x=content_analysis.index, y=content_analysis['Avg Comments']),
+        go.Bar(name='Comments', x=content_analysis.index, y=content_analysis['Avg Comments'], marker_color=CHART_COLORS['accent']),
         row=1, col=2
     )
     fig.update_layout(height=400, showlegend=False)
@@ -606,7 +631,7 @@ def render_engagement_analysis(df: pd.DataFrame):
         title='Posts by Performance Category',
         labels={'x': 'Category', 'y': 'Number of Posts'},
         color=perf_counts.index,
-        color_discrete_map={'High': 'green', 'Medium': 'blue', 'Low': 'orange', 'Very Low': 'red'}
+        color_discrete_map={'High': '#b65532', 'Medium': '#e8a66d', 'Low': '#f4c095', 'Very Low': '#d9c2b3'}
     )
     fig.update_layout(height=400)
     st.plotly_chart(fig, use_container_width=True)
@@ -634,7 +659,7 @@ def render_time_analysis(df: pd.DataFrame):
         title='Average Engagement by Hour',
         labels={'hour': 'Hour of Day', 'total_engagement': 'Avg Engagement'},
         color='total_engagement',
-        color_continuous_scale='Blues'
+        color_continuous_scale=WARM_SCALE
     )
     fig.update_layout(height=400)
     st.plotly_chart(fig, use_container_width=True)
@@ -655,7 +680,7 @@ def render_time_analysis(df: pd.DataFrame):
             y='total_engagement',
             title='Average Engagement by Day',
             color='total_engagement',
-            color_continuous_scale='Oranges'
+            color_continuous_scale=WARM_SCALE
         )
         fig.update_layout(height=400)
         st.plotly_chart(fig, use_container_width=True)
@@ -674,7 +699,8 @@ def render_time_analysis(df: pd.DataFrame):
             x='period',
             y=['likes', 'comments'],
             title='Avg Engagement: Weekend vs Weekday',
-            barmode='group'
+            barmode='group',
+            color_discrete_sequence=[CHART_COLORS['primary'], CHART_COLORS['accent']]
         )
         fig.update_layout(height=400)
         st.plotly_chart(fig, use_container_width=True)
@@ -705,7 +731,7 @@ def render_time_analysis(df: pd.DataFrame):
             title='Average Engagement by Time of Day',
             labels={'x': 'Time of Day', 'y': 'Average Engagement'},
             color=time_data['Avg Engagement'],
-            color_continuous_scale='Viridis'
+            color_continuous_scale=WARM_SCALE
         )
         fig.update_layout(height=400)
         st.plotly_chart(fig, use_container_width=True)
@@ -970,7 +996,7 @@ def render_image_analysis(df: pd.DataFrame):
                         orientation='h',
                         title='Most Detected Labels (Google Vision)',
                         color='count',
-                        color_continuous_scale='Reds'
+                        color_continuous_scale=WARM_SCALE
                     )
                     fig.update_layout(height=400, yaxis={'categoryorder': 'total ascending'})
                     st.plotly_chart(fig, use_container_width=True)
@@ -1125,7 +1151,7 @@ def render_image_analysis(df: pd.DataFrame):
                     orientation='h',
                     title='Most Used Hashtags',
                     color='count',
-                    color_continuous_scale='Blues'
+                    color_continuous_scale=WARM_SCALE
                 )
                 fig.update_layout(height=400, yaxis={'categoryorder': 'total ascending'})
                 st.plotly_chart(fig, use_container_width=True)
@@ -1142,7 +1168,7 @@ def render_image_analysis(df: pd.DataFrame):
                 hover_data=['image_file', 'hashtag_count'],
                 title='Does Caption Length Affect Engagement?',
                 color='hashtag_count',
-                color_continuous_scale='Viridis'
+                color_continuous_scale=WARM_SCALE
             )
             fig.update_layout(height=400)
             st.plotly_chart(fig, use_container_width=True)
