@@ -803,6 +803,17 @@ def render_image_analysis(df: pd.DataFrame):
     with tab_explorer:
         st.subheader("Post Explorer")
 
+        # Check URL query parameters for selected post
+        try:
+            query_params = st.query_params
+            if 'selected_post' in query_params:
+                selected_from_url = query_params['selected_post']
+                # Verify it's a valid shortcode
+                if selected_from_url in df_processed['shortcode'].values:
+                    st.session_state.selected_explorer_post = selected_from_url
+        except:
+            pass
+
         # Initialize selected post in session state
         if 'selected_explorer_post' not in st.session_state:
             st.session_state.selected_explorer_post = df_processed.iloc[0]['shortcode']
@@ -831,8 +842,8 @@ def render_image_analysis(df: pd.DataFrame):
         ascending = True if sort_choice == "Date" else False
         df_sorted = df_processed.sort_values(sort_col, ascending=ascending)
 
-        # Build horizontal scrollable thumbnail strip
-        thumbnail_html = '<div class="thumbnail-strip">'
+        # Build horizontal scrollable thumbnail strip with JavaScript
+        thumbnail_html = '<div class="thumbnail-strip" id="thumbnail-strip">'
         for _, row in df_sorted.iterrows():
             image_file = row.get('image_file', '')
             image_path = IMAGE_DIR / image_file if image_file else None
@@ -845,7 +856,7 @@ def render_image_analysis(df: pd.DataFrame):
                     img_data = base64.b64encode(img_file.read()).decode()
                 img_src = f"data:image/jpeg;base64,{img_data}"
                 thumbnail_html += f'''
-                    <div class="thumb-item {selected_class}" data-shortcode="{shortcode}">
+                    <div class="thumb-item {selected_class}" data-shortcode="{shortcode}" onclick="selectThumbnail('{shortcode}')">
                         <img src="{img_src}" alt="{image_file}">
                         <div class="thumb-label">{image_file[:10] if image_file else shortcode[:8]}</div>
                         <div class="thumb-engagement">❤️ {int(row['likes']):,}</div>
@@ -853,12 +864,28 @@ def render_image_analysis(df: pd.DataFrame):
                 '''
             else:
                 thumbnail_html += f'''
-                    <div class="thumb-item {selected_class}" data-shortcode="{shortcode}">
+                    <div class="thumb-item {selected_class}" data-shortcode="{shortcode}" onclick="selectThumbnail('{shortcode}')">
                         <div class="thumb-placeholder">📷</div>
                         <div class="thumb-label">{image_file or shortcode[:8]}</div>
                     </div>
                 '''
-        thumbnail_html += '</div>'
+
+        # Add JavaScript for handling clicks
+        thumbnail_html += '''
+        </div>
+        <script>
+            function selectThumbnail(shortcode) {
+                // Store the selected shortcode in session storage
+                sessionStorage.setItem('selected_shortcode', shortcode);
+
+                // Trigger a rerun by updating the URL query params
+                const url = new URL(window.location);
+                url.searchParams.set('selected_post', shortcode);
+                url.searchParams.set('timestamp', Date.now()); // Force refresh
+                window.parent.location.href = url.toString();
+            }
+        </script>
+        '''
 
         # CSS for horizontal scrollable strip
         st.markdown("""
