@@ -842,143 +842,75 @@ def render_image_analysis(df: pd.DataFrame):
         ascending = True if sort_choice == "Date" else False
         df_sorted = df_processed.sort_values(sort_col, ascending=ascending)
 
-        # Build horizontal scrollable thumbnail strip with JavaScript
-        thumbnail_html = '<div class="thumbnail-strip" id="thumbnail-strip">'
-        for _, row in df_sorted.iterrows():
-            image_file = row.get('image_file', '')
-            image_path = IMAGE_DIR / image_file if image_file else None
-            shortcode = row['shortcode']
-            is_selected = st.session_state.selected_explorer_post == shortcode
-            selected_class = "selected" if is_selected else ""
+        # Horizontal scrollable thumbnail selector using columns
+        st.markdown("Scroll horizontally to browse all posts →")
 
-            if image_path and image_path.exists():
-                with open(image_path, "rb") as img_file:
-                    img_data = base64.b64encode(img_file.read()).decode()
-                img_src = f"data:image/jpeg;base64,{img_data}"
-                thumbnail_html += f'''
-                    <div class="thumb-item {selected_class}" data-shortcode="{shortcode}" onclick="selectThumbnail('{shortcode}')">
-                        <img src="{img_src}" alt="{image_file}">
-                        <div class="thumb-label">{image_file[:10] if image_file else shortcode[:8]}</div>
-                        <div class="thumb-engagement">❤️ {int(row['likes']):,}</div>
-                    </div>
-                '''
-            else:
-                thumbnail_html += f'''
-                    <div class="thumb-item {selected_class}" data-shortcode="{shortcode}" onclick="selectThumbnail('{shortcode}')">
-                        <div class="thumb-placeholder">📷</div>
-                        <div class="thumb-label">{image_file or shortcode[:8]}</div>
-                    </div>
-                '''
-
-        # Add JavaScript for handling clicks
-        thumbnail_html += '''
-        </div>
-        <script>
-            function selectThumbnail(shortcode) {
-                // Store the selected shortcode in session storage
-                sessionStorage.setItem('selected_shortcode', shortcode);
-
-                // Trigger a rerun by updating the URL query params
-                const url = new URL(window.location);
-                url.searchParams.set('selected_post', shortcode);
-                url.searchParams.set('timestamp', Date.now()); // Force refresh
-                window.parent.location.href = url.toString();
-            }
-        </script>
-        '''
-
-        # CSS for horizontal scrollable strip
+        # Create a container with custom CSS for horizontal scrolling
         st.markdown("""
             <style>
-            .thumbnail-strip {
+            div[data-testid="column"] {
+                min-width: 120px !important;
+            }
+            .thumbnail-container {
                 display: flex;
                 overflow-x: auto;
-                gap: 12px;
-                padding: 12px 4px;
-                margin-bottom: 16px;
-                scrollbar-width: thin;
-                scrollbar-color: #e8a66d #fff8f0;
+                gap: 10px;
+                padding: 10px 0;
             }
-            .thumbnail-strip::-webkit-scrollbar {
-                height: 8px;
+            .stButton button {
+                padding: 0 !important;
+                border: none !important;
+                background: transparent !important;
             }
-            .thumbnail-strip::-webkit-scrollbar-track {
-                background: #fff8f0;
-                border-radius: 4px;
-            }
-            .thumbnail-strip::-webkit-scrollbar-thumb {
-                background: #e8a66d;
-                border-radius: 4px;
-            }
-            .thumb-item {
-                flex: 0 0 auto;
-                width: 100px;
-                text-align: center;
-                cursor: pointer;
-                border-radius: 12px;
-                padding: 8px;
-                background: #fff8f0;
-                border: 2px solid transparent;
-                transition: all 0.2s ease;
-            }
-            .thumb-item:hover {
-                border-color: #e8a66d;
-                transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(180, 100, 50, 0.2);
-            }
-            .thumb-item.selected {
-                border-color: #b65532;
-                background: linear-gradient(135deg, #f4c095 0%, #e8a66d 100%);
-            }
-            .thumb-item img {
-                width: 80px;
-                height: 80px;
-                object-fit: cover;
-                border-radius: 8px;
-            }
-            .thumb-placeholder {
-                width: 80px;
-                height: 80px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 2rem;
-                background: #f4c095;
-                border-radius: 8px;
-                margin: 0 auto;
-            }
-            .thumb-label {
-                font-size: 0.7rem;
-                color: #2d1b12;
-                margin-top: 6px;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-            }
-            .thumb-engagement {
-                font-size: 0.65rem;
-                color: #6b4b3e;
+            .stButton button:hover {
+                background: transparent !important;
             }
             </style>
         """, unsafe_allow_html=True)
 
-        st.markdown(thumbnail_html, unsafe_allow_html=True)
-
-        # Compact button row for selection
+        # Use columns for horizontal layout - show all posts
         num_posts = len(df_sorted)
-        cols_to_use = min(num_posts, 10)
-        button_cols = st.columns(cols_to_use)
+        # Create many columns to force horizontal scrolling
+        thumb_cols = st.columns(num_posts)
 
-        for idx, (_, row) in enumerate(df_sorted.iterrows()):
-            col_idx = idx % cols_to_use
-            with button_cols[col_idx]:
+        for idx, (col, (_, row)) in enumerate(zip(thumb_cols, df_sorted.iterrows())):
+            with col:
                 shortcode = row['shortcode']
                 is_selected = st.session_state.selected_explorer_post == shortcode
                 image_file = row.get('image_file', '')
-                label = f"✓ {idx+1}" if is_selected else str(idx + 1)
-                if st.button(label, key=f"thumb_{shortcode}", use_container_width=True, help=image_file):
-                    st.session_state.selected_explorer_post = shortcode
-                    st.rerun()
+                image_path = IMAGE_DIR / image_file if image_file else None
+
+                # Create a styled container for each thumbnail
+                border_color = "#b65532" if is_selected else "#e0e0e0"
+                bg_color = "#f4c095" if is_selected else "#fff8f0"
+
+                # Display image or placeholder
+                if image_path and image_path.exists():
+                    if st.button(
+                        f"📷",
+                        key=f"thumb_{shortcode}",
+                        use_container_width=True,
+                        help=f"{image_file}\n❤️ {int(row['likes']):,} | 💬 {int(row['comments'])}"
+                    ):
+                        st.session_state.selected_explorer_post = shortcode
+                        st.rerun()
+                    st.image(str(image_path), use_container_width=True)
+                else:
+                    if st.button(
+                        f"📷 No Image",
+                        key=f"thumb_{shortcode}",
+                        use_container_width=True
+                    ):
+                        st.session_state.selected_explorer_post = shortcode
+                        st.rerun()
+
+                # Show engagement info below
+                st.caption(f"{image_file[:12] if image_file else shortcode[:8]}")
+                st.caption(f"❤️ {int(row['likes']):,}")
+
+                # Selected indicator
+                if is_selected:
+                    st.markdown("**✓ Selected**")
 
         st.markdown("---")
 
