@@ -880,26 +880,29 @@ def render_image_analysis(df: pd.DataFrame):
                 image_file = row.get('image_file', '')
                 image_path = IMAGE_DIR / image_file if image_file else None
 
-                # Create a styled container for each thumbnail
-                border_color = "#b65532" if is_selected else "#e0e0e0"
-                bg_color = "#f4c095" if is_selected else "#fff8f0"
-
-                # Display image or placeholder
+                # Create clickable container
                 if image_path and image_path.exists():
+                    # Display the image first
+                    st.image(str(image_path), use_container_width=True)
+
+                    # Button directly below image to select it
+                    button_label = "✓ Selected" if is_selected else "Select"
                     if st.button(
-                        f"📷",
+                        button_label,
                         key=f"thumb_{shortcode}",
                         use_container_width=True,
-                        help=f"{image_file}\n❤️ {int(row['likes']):,} | 💬 {int(row['comments'])}"
+                        type="primary" if is_selected else "secondary"
                     ):
                         st.session_state.selected_explorer_post = shortcode
                         st.rerun()
-                    st.image(str(image_path), use_container_width=True)
                 else:
+                    # Placeholder for missing images
+                    st.info("No Image")
                     if st.button(
-                        f"📷 No Image",
+                        "✓ Selected" if is_selected else "Select",
                         key=f"thumb_{shortcode}",
-                        use_container_width=True
+                        use_container_width=True,
+                        type="primary" if is_selected else "secondary"
                     ):
                         st.session_state.selected_explorer_post = shortcode
                         st.rerun()
@@ -907,10 +910,6 @@ def render_image_analysis(df: pd.DataFrame):
                 # Show engagement info below
                 st.caption(f"{image_file[:12] if image_file else shortcode[:8]}")
                 st.caption(f"❤️ {int(row['likes']):,}")
-
-                # Selected indicator
-                if is_selected:
-                    st.markdown("**✓ Selected**")
 
         st.markdown("---")
 
