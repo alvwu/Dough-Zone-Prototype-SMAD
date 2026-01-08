@@ -932,23 +932,13 @@ def render_image_analysis(df: pd.DataFrame):
                 font-size: 0.65rem;
                 color: #6b4b3e;
             }
-            .button-row {
-                margin-top: -8px;
-            }
-            .button-row .stButton button {
-                font-size: 0.75rem;
-                padding: 4px 8px;
-                min-height: 32px;
-            }
             </style>
         """, unsafe_allow_html=True)
 
         st.markdown(thumbnail_html, unsafe_allow_html=True)
 
         # Compact button row for selection
-        st.markdown('<div class="button-row">', unsafe_allow_html=True)
         num_posts = len(df_sorted)
-        # Use 10 columns max to keep buttons usable
         cols_to_use = min(num_posts, 10)
         button_cols = st.columns(cols_to_use)
 
@@ -958,15 +948,10 @@ def render_image_analysis(df: pd.DataFrame):
                 shortcode = row['shortcode']
                 is_selected = st.session_state.selected_explorer_post == shortcode
                 image_file = row.get('image_file', '')
-                # Show truncated filename or index
                 label = f"✓ {idx+1}" if is_selected else str(idx + 1)
                 if st.button(label, key=f"thumb_{shortcode}", use_container_width=True, help=image_file):
                     st.session_state.selected_explorer_post = shortcode
                     st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # Add anchor and auto-scroll
-        st.markdown('<div id="post-details-anchor"></div>', unsafe_allow_html=True)
 
         st.markdown("---")
 
