@@ -787,7 +787,7 @@ def generate_prompts_with_gemini(top_performers, vision_results, content_type, s
 
         # Configure Gemini
         genai.configure(api_key=st.session_state.gemini_api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
 
         # Extract data for context
         common_themes = []
@@ -1822,7 +1822,7 @@ def render_post_analysis(df: pd.DataFrame):
                         try:
                             import google.generativeai as genai
                             genai.configure(api_key=st.session_state.gemini_api_key)
-                            model = genai.GenerativeModel('gemini-pro')
+                            model = genai.GenerativeModel('gemini-2.0-flash-exp')
                             response = model.generate_content("Say 'API connection successful!' in exactly 3 words.")
                             st.success(f"✅ Connection successful! Response: {response.text[:50]}")
                             st.session_state.gemini_enabled = True
