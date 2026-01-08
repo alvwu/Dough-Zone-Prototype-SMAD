@@ -36,18 +36,77 @@ st.set_page_config(
 
 # Image directory
 IMAGE_DIR = Path(__file__).parent / "image"
+CREDENTIALS_FILE = Path(__file__).parent / ".vision_credentials.json"
+VISION_CACHE_FILE = Path(__file__).parent / ".vision_cache.json"
+
+
+def load_saved_credentials():
+    """Load credentials from file if exists."""
+    if CREDENTIALS_FILE.exists():
+        try:
+            import json
+            with open(CREDENTIALS_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return None
+    return None
+
+
+def save_credentials(credentials_dict):
+    """Save credentials to file."""
+    import json
+    with open(CREDENTIALS_FILE, 'w') as f:
+        json.dump(credentials_dict, f)
+
+
+def clear_saved_credentials():
+    """Remove saved credentials file."""
+    if CREDENTIALS_FILE.exists():
+        CREDENTIALS_FILE.unlink()
+
+
+def load_vision_cache():
+    """Load vision results from cache file."""
+    if VISION_CACHE_FILE.exists():
+        try:
+            import json
+            with open(VISION_CACHE_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+
+def save_vision_cache(results):
+    """Save vision results to cache file."""
+    import json
+    with open(VISION_CACHE_FILE, 'w') as f:
+        json.dump(results, f)
+
+
+def clear_vision_cache():
+    """Remove vision cache file."""
+    if VISION_CACHE_FILE.exists():
+        VISION_CACHE_FILE.unlink()
 
 
 def init_session_state():
     """Initialize session state variables."""
     if 'db_initialized' not in st.session_state:
         st.session_state.db_initialized = False
+
+    # Load credentials from file if not in session
     if 'vision_credentials' not in st.session_state:
-        st.session_state.vision_credentials = None
+        saved_creds = load_saved_credentials()
+        st.session_state.vision_credentials = saved_creds
+        st.session_state.credentials_valid = saved_creds is not None
+
     if 'credentials_valid' not in st.session_state:
         st.session_state.credentials_valid = False
+
+    # Load vision results from cache if not in session
     if 'vision_results' not in st.session_state:
-        st.session_state.vision_results = {}
+        st.session_state.vision_results = load_vision_cache()
 
 
 def load_data():
@@ -922,6 +981,7 @@ def render_image_analysis(df: pd.DataFrame):
 
                     if st.button("💾 Save Credentials", use_container_width=True):
                         st.session_state.vision_credentials = credentials_dict
+                        save_credentials(credentials_dict)  # Save to file
                         with st.spinner("Validating credentials..."):
                             try:
                                 is_valid = validate_credentials(credentials_dict)
@@ -956,6 +1016,8 @@ def render_image_analysis(df: pd.DataFrame):
                     st.session_state.vision_credentials = None
                     st.session_state.credentials_valid = False
                     st.session_state.vision_results = {}
+                    clear_saved_credentials()
+                    clear_vision_cache()
                     st.info("Credentials cleared")
                     st.rerun()
 
@@ -975,7 +1037,7 @@ def render_image_analysis(df: pd.DataFrame):
         """)
 
         st.markdown("---")
-        st.markdown("**Note:** Credentials are stored in session memory only and will be cleared when you close the browser.")
+        st.markdown("**Note:** Credentials are saved locally and will persist until you clear them or restart the app.")
         st.markdown("**Cost:** Google Vision API offers 1,000 free requests per month.")
 
         # Batch analyze section
@@ -1013,6 +1075,7 @@ def render_image_analysis(df: pd.DataFrame):
 
                         progress_bar.progress((i + 1) / len(unprocessed))
 
+                    save_vision_cache(st.session_state.vision_results)
                     status_text.text("Done!")
                     st.success(f"Analyzed {len(unprocessed)} images!")
                     st.rerun()
