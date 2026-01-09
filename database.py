@@ -120,11 +120,9 @@ def load_csv_to_database(csv_path: str, replace_existing: bool = False):
     # Convert post_id to string (handle scientific notation)
     df['post_id'] = df['post_id'].astype(str)
 
-    # Parse datetime - handle multiple formats
-    try:
-        df['posting_date'] = pd.to_datetime(df['posting_date'], format='%m/%d/%Y %H:%M')
-    except:
-        df['posting_date'] = pd.to_datetime(df['posting_date'])
+    # Parse datetime - automatically handles ANY format
+    # Works with: "12/31/2023 3:30 PM", "2023-12-31 15:30", "Dec 31 2023 3pm", etc.
+    df['posting_date'] = pd.to_datetime(df['posting_date'], infer_datetime_format=True, errors='coerce')
 
     if replace_existing:
         cursor = conn.cursor()
