@@ -124,6 +124,12 @@ def load_csv_to_database(csv_path: str, replace_existing: bool = False):
     # Works with: "12/31/2023 3:30 PM", "2023-12-31 15:30", "Dec 31 2023 3pm", etc.
     df['posting_date'] = pd.to_datetime(df['posting_date'], infer_datetime_format=True, errors='coerce')
 
+    # Remove rows with invalid dates (NaT)
+    invalid_dates = df['posting_date'].isna().sum()
+    if invalid_dates > 0:
+        print(f"Warning: {invalid_dates} rows had invalid dates and were skipped")
+        df = df.dropna(subset=['posting_date'])
+
     if replace_existing:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM posts")
