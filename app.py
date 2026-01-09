@@ -1646,8 +1646,12 @@ def render_post_analysis(df: pd.DataFrame):
 
                                 with col_gen:
                                     if st.button(f"🎨 Generate with Imagen 2", key=f"gen_imagen_{idx}", use_container_width=True, type="primary"):
+                                        print(f"\n[APP DEBUG] Imagen button clicked for prompt #{idx}")
+                                        print(f"[APP DEBUG] Imagen enabled: {st.session_state.imagen_enabled}")
+                                        print(f"[APP DEBUG] Has credentials: {st.session_state.imagen_credentials is not None}")
                                         with st.spinner("Generating image with Imagen 2..."):
                                             try:
+                                                print(f"[APP DEBUG] Starting image generation...")
                                                 # Create output directory
                                                 GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
 
@@ -1764,8 +1768,12 @@ def render_post_analysis(df: pd.DataFrame):
 
                             with col_gen_custom:
                                 if st.button("🎨 Generate with Imagen 2", key="gen_imagen_custom", use_container_width=True, type="primary"):
+                                    print(f"\n[APP DEBUG] Imagen button clicked for custom prompt")
+                                    print(f"[APP DEBUG] Imagen enabled: {st.session_state.imagen_enabled}")
+                                    print(f"[APP DEBUG] Has credentials: {st.session_state.imagen_credentials is not None}")
                                     with st.spinner("Generating image with Imagen 2..."):
                                         try:
+                                            print(f"[APP DEBUG] Starting custom prompt image generation...")
                                             # Create output directory
                                             GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
 
