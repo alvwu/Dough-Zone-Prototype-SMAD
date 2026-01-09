@@ -97,8 +97,10 @@ Social Media Dashboard/
 ├── vision_api.py               # Google Cloud Vision API integration
 ├── imagen_api.py               # Google Cloud Imagen 2 API integration
 ├── requirements.txt            # Python dependencies
-├── insta_dummy_data(in).csv    # Sample data
-└── image/                      # Folder for post images
+├── data/                       # Folder for CSV data files
+│   └── insta_dummy_data(in).csv # Sample data
+├── image/                      # Folder for post images
+└── generated_images/           # Folder for AI-generated images (auto-created)
 ```
 
 **Note:** `app1.py` is a legacy file and should be ignored. Use `app.py` only.
@@ -171,9 +173,12 @@ The dashboard expects CSV data with the following columns:
 
 ### Loading Data
 
-1. Navigate to **Data Management** (sidebar)
-2. Upload your CSV file or use the sample data (`insta_dummy_data(in).csv`)
-3. Data is automatically stored in a local SQLite database
+The app automatically loads CSV files from the `data/` folder:
+
+1. Place your CSV file in the `data/` folder (e.g., `data/insta_dummy_data(in).csv`)
+2. The app will automatically detect and load the CSV file on startup
+3. Data is stored in a local SQLite database for faster access
+4. Sample data is included: `data/insta_dummy_data(in).csv`
 
 ### Analyzing Engagement
 

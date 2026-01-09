@@ -42,7 +42,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Image directory
+# Directory structure
+DATA_DIR = Path(__file__).parent / "data"
 IMAGE_DIR = Path(__file__).parent / "image"
 GENERATED_IMAGES_DIR = Path(__file__).parent / "generated_images"
 CREDENTIALS_FILE = Path(__file__).parent / ".vision_credentials.json"
@@ -387,7 +388,7 @@ def init_session_state():
 
 
 def load_data():
-    """Load data from database or CSV."""
+    """Load data from database or CSV in data folder."""
     # Initialize database
     database.init_database()
 
@@ -395,11 +396,11 @@ def load_data():
     df = database.get_all_posts()
 
     if len(df) == 0:
-        # Try to load from CSV (new file name)
-        csv_path = Path(__file__).parent / "insta_dummy_data(in).csv"
+        # Try to load from CSV in data folder
+        csv_path = DATA_DIR / "insta_dummy_data(in).csv"
         if csv_path.exists():
             n_loaded = database.load_csv_to_database(str(csv_path), replace_existing=True)
-            st.success(f"Loaded {n_loaded} posts from CSV file")
+            st.success(f"Loaded {n_loaded} posts from data/insta_dummy_data(in).csv")
             df = database.get_all_posts()
 
     return df
