@@ -1649,9 +1649,19 @@ def render_post_analysis(df: pd.DataFrame):
                                         print(f"\n[APP DEBUG] Imagen button clicked for prompt #{idx}")
                                         print(f"[APP DEBUG] Imagen enabled: {st.session_state.imagen_enabled}")
                                         print(f"[APP DEBUG] Has credentials: {st.session_state.imagen_credentials is not None}")
+
+                                        # Show immediate feedback
+                                        st.info(f"🔄 Button clicked! Credentials loaded: {st.session_state.imagen_credentials is not None}")
+
                                         with st.spinner("Generating image with Imagen 2..."):
                                             try:
                                                 print(f"[APP DEBUG] Starting image generation...")
+
+                                                # Validate credentials exist
+                                                if not st.session_state.imagen_credentials:
+                                                    st.error("❌ No Imagen credentials found. Please configure them in Settings.")
+                                                    st.stop()
+
                                                 # Create output directory
                                                 GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
 
@@ -1771,9 +1781,19 @@ def render_post_analysis(df: pd.DataFrame):
                                     print(f"\n[APP DEBUG] Imagen button clicked for custom prompt")
                                     print(f"[APP DEBUG] Imagen enabled: {st.session_state.imagen_enabled}")
                                     print(f"[APP DEBUG] Has credentials: {st.session_state.imagen_credentials is not None}")
+
+                                    # Show immediate feedback
+                                    st.info(f"🔄 Button clicked! Credentials loaded: {st.session_state.imagen_credentials is not None}")
+
                                     with st.spinner("Generating image with Imagen 2..."):
                                         try:
                                             print(f"[APP DEBUG] Starting custom prompt image generation...")
+
+                                            # Validate credentials exist
+                                            if not st.session_state.imagen_credentials:
+                                                st.error("❌ No Imagen credentials found. Please configure them in Settings.")
+                                                st.stop()
+
                                             # Create output directory
                                             GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
 
