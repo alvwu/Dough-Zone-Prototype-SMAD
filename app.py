@@ -739,16 +739,33 @@ def render_time_analysis(df: pd.DataFrame):
     # Hourly Heatmap
     st.subheader("Engagement by Hour of Day")
     hourly_data = df_processed.groupby('hour')['total_engagement'].mean().reset_index()
+
+    # Format hours for better readability (e.g., "8 AM", "3 PM")
+    def format_hour(hour):
+        if hour == 0:
+            return "12 AM"
+        elif hour < 12:
+            return f"{hour} AM"
+        elif hour == 12:
+            return "12 PM"
+        else:
+            return f"{hour - 12} PM"
+
+    hourly_data['hour_formatted'] = hourly_data['hour'].apply(format_hour)
+
     fig = px.bar(
         hourly_data,
-        x='hour',
+        x='hour_formatted',
         y='total_engagement',
         title='Average Engagement by Hour',
-        labels={'hour': 'Hour of Day', 'total_engagement': 'Avg Engagement'},
+        labels={'hour_formatted': 'Time of Day', 'total_engagement': 'Avg Engagement'},
         color='total_engagement',
         color_continuous_scale=WARM_SCALE
     )
-    fig.update_layout(height=400)
+    fig.update_layout(
+        height=400,
+        xaxis_tickangle=-45  # Angle labels for better readability
+    )
     st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("---")
