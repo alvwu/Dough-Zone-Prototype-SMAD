@@ -712,17 +712,49 @@ def render_engagement_analysis(df: pd.DataFrame):
     st.markdown("---")
     st.subheader("📊 Performance Distribution")
 
+    # Add explanation
+    st.info("""
+    **How to read this chart:** Posts are grouped into 4 categories based on their engagement compared to your other posts:
+    - 🔥 **High** = Top 25% (75th-100th percentile)
+    - ✅ **Medium** = Above Average (50th-75th percentile)
+    - 📉 **Low** = Below Average (25th-50th percentile)
+    - ⚠️ **Very Low** = Bottom 25% (0-25th percentile)
+    """)
+
     perf_counts = df_processed['performance_category'].value_counts()
-    fig = px.bar(
-        x=perf_counts.index,
-        y=perf_counts.values,
-        title='Posts by Performance Category',
-        labels={'x': 'Category', 'y': 'Number of Posts'},
-        color=perf_counts.index,
-        color_discrete_map={'High': '#b65532', 'Medium': '#e8a66d', 'Low': '#f4c095', 'Very Low': '#d9c2b3'}
-    )
-    fig.update_layout(height=400)
-    st.plotly_chart(fig, use_container_width=True)
+
+    # Create side-by-side layout: chart + breakdown table
+    col_chart, col_table = st.columns([2, 1])
+
+    with col_chart:
+        fig = px.bar(
+            x=perf_counts.index,
+            y=perf_counts.values,
+            title='Posts by Performance Category',
+            labels={'x': 'Category', 'y': 'Number of Posts'},
+            color=perf_counts.index,
+            color_discrete_map={'High': '#b65532', 'Medium': '#e8a66d', 'Low': '#f4c095', 'Very Low': '#d9c2b3'}
+        )
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col_table:
+        st.markdown("### Category Breakdown")
+        # Create a summary table
+        total_posts = len(df_processed)
+        summary_data = []
+
+        for category in ['High', 'Medium', 'Low', 'Very Low']:
+            count = perf_counts.get(category, 0)
+            percentage = (count / total_posts * 100) if total_posts > 0 else 0
+            summary_data.append({
+                'Category': category,
+                'Posts': count,
+                'Percentage': f"{percentage:.1f}%"
+            })
+
+        summary_df = pd.DataFrame(summary_data)
+        st.dataframe(summary_df, hide_index=True, use_container_width=True)
 
 
 def render_time_analysis(df: pd.DataFrame):
