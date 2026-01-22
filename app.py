@@ -226,6 +226,13 @@ def load_css():
             [data-testid="stSidebar"] [data-testid="stMetricLabel"] {
                 color: #cccccc !important;
             }
+            /* Quick Stats metrics in dark mode - match About section style */
+            [data-testid="stSidebar"] [data-testid="stMetric"] {
+                background: rgba(255, 255, 255, 0.1) !important;
+                border-color: rgba(255, 255, 255, 0.2) !important;
+                border-radius: 12px !important;
+                padding: 12px !important;
+            }
             /* About info box in dark mode */
             [data-testid="stSidebar"] [data-testid="stAlert"] {
                 background: rgba(255, 255, 255, 0.1) !important;
@@ -259,6 +266,14 @@ def load_css():
         }
         [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stMetricLabel"] {
             color: #cccccc !important;
+        }
+        /* Quick Stats metrics in dark mode - match About section style */
+        [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stMetric"],
+        .st-emotion-cache-1gwvy71 [data-testid="stSidebar"] [data-testid="stMetric"] {
+            background: rgba(255, 255, 255, 0.1) !important;
+            border-color: rgba(255, 255, 255, 0.2) !important;
+            border-radius: 12px !important;
+            padding: 12px !important;
         }
         /* About info box in dark mode */
         [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stAlert"],
