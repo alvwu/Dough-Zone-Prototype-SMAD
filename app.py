@@ -1837,6 +1837,9 @@ def render_post_analysis(df: pd.DataFrame):
                                     
                                     # Handle generation outside the column context
                                     if generate_clicked:
+                                        generation_success = False
+                                        generation_error = None
+                                        
                                         with st.spinner("🎨 Generating image with Imagen 2... This may take 10-15 seconds."):
                                             try:
                                                 # Validate credentials exist
@@ -1871,17 +1874,21 @@ def render_post_analysis(df: pd.DataFrame):
                                                         }
                                                         st.session_state[prompt_key] = generated_info
                                                         st.session_state.generated_images.append(generated_info)
-                                                        
-                                                        # Rerun to show the image
-                                                        st.rerun()
+                                                        generation_success = True
                                                     else:
                                                         st.error("❌ No images were generated. The API returned empty results.")
                                             except Exception as e:
-                                                st.error(f"❌ Generation failed: {str(e)}")
-                                                if "quota" in str(e).lower() or "billing" in str(e).lower():
-                                                    st.warning("💡 Make sure billing is enabled and you have remaining credits in your Google Cloud account.")
-                                                elif "permission" in str(e).lower() or "403" in str(e):
-                                                    st.warning("💡 Check that your service account has 'Vertex AI User' role and Imagen API is enabled.")
+                                                generation_error = str(e)
+                                        
+                                        # Handle results OUTSIDE the try/except block
+                                        if generation_success:
+                                            st.rerun()
+                                        elif generation_error:
+                                            st.error(f"❌ Generation failed: {generation_error}")
+                                            if "quota" in generation_error.lower() or "billing" in generation_error.lower():
+                                                st.warning("💡 Make sure billing is enabled and you have remaining credits in your Google Cloud account.")
+                                            elif "permission" in generation_error.lower() or "403" in generation_error:
+                                                st.warning("💡 Check that your service account has 'Vertex AI User' role and Imagen API is enabled.")
                             elif prompt_data['type'] == 'Image' and not st.session_state.imagen_enabled:
                                 st.info("💡 Configure Imagen 2 in API Settings to generate images directly")
 
@@ -2037,6 +2044,9 @@ def render_post_analysis(df: pd.DataFrame):
                         
                         # Handle generation outside the column context
                         if generate_custom_clicked:
+                            generation_success = False
+                            generation_error = None
+                            
                             with st.spinner("🎨 Generating image with Imagen 2... This may take 10-15 seconds."):
                                 try:
                                     if not st.session_state.imagen_credentials:
@@ -2062,15 +2072,21 @@ def render_post_analysis(df: pd.DataFrame):
                                             }
                                             st.session_state.custom_generated_img = generated_info
                                             st.session_state.generated_images.append(generated_info)
-                                            st.rerun()
+                                            generation_success = True
                                         else:
                                             st.error("❌ No images were generated. The API returned empty results.")
                                 except Exception as e:
-                                    st.error(f"❌ Generation failed: {str(e)}")
-                                    if "quota" in str(e).lower() or "billing" in str(e).lower():
-                                        st.warning("💡 Make sure billing is enabled and you have remaining credits.")
-                                    elif "permission" in str(e).lower() or "403" in str(e):
-                                        st.warning("💡 Check that your service account has 'Vertex AI User' role.")
+                                    generation_error = str(e)
+                            
+                            # Handle results OUTSIDE the try/except block
+                            if generation_success:
+                                st.rerun()
+                            elif generation_error:
+                                st.error(f"❌ Generation failed: {generation_error}")
+                                if "quota" in generation_error.lower() or "billing" in generation_error.lower():
+                                    st.warning("💡 Make sure billing is enabled and you have remaining credits.")
+                                elif "permission" in generation_error.lower() or "403" in generation_error:
+                                    st.warning("💡 Check that your service account has 'Vertex AI User' role.")
                 elif content_type == 'Image' and not st.session_state.imagen_enabled:
                     st.info("💡 Configure Imagen 2 in API Settings to generate images directly")
 
