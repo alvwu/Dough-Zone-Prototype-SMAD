@@ -207,24 +207,32 @@ def load_css():
                 background: linear-gradient(180deg, #1a1a1a 0%, #2d2015 100%) !important;
             }
             [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
-                color: #f4c095 !important;
+                color: #ffffff !important;
             }
             [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
             [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] span,
             [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] label {
-                color: #e8d5c4 !important;
+                color: #ffffff !important;
             }
             [data-testid="stSidebar"] hr {
-                border-color: rgba(232, 166, 109, 0.3) !important;
+                border-color: rgba(255, 255, 255, 0.2) !important;
             }
             [data-testid="stSidebar"] .stRadio label {
-                color: #e8d5c4 !important;
+                color: #ffffff !important;
             }
             [data-testid="stSidebar"] [data-testid="stMetricValue"] {
-                color: #f4c095 !important;
+                color: #ffffff !important;
             }
             [data-testid="stSidebar"] [data-testid="stMetricLabel"] {
-                color: #d9c2b3 !important;
+                color: #cccccc !important;
+            }
+            /* About info box in dark mode */
+            [data-testid="stSidebar"] [data-testid="stAlert"] {
+                background: rgba(255, 255, 255, 0.1) !important;
+                border-color: rgba(255, 255, 255, 0.2) !important;
+            }
+            [data-testid="stSidebar"] [data-testid="stAlert"] p {
+                color: #ffffff !important;
             }
         }
         
@@ -235,22 +243,32 @@ def load_css():
         }
         [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
         .st-emotion-cache-1gwvy71 [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
-            color: #f4c095 !important;
+            color: #ffffff !important;
         }
         [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
         [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] span,
         [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] label,
         [data-theme="dark"] [data-testid="stSidebar"] .stRadio label {
-            color: #e8d5c4 !important;
+            color: #ffffff !important;
         }
         [data-theme="dark"] [data-testid="stSidebar"] hr {
-            border-color: rgba(232, 166, 109, 0.3) !important;
+            border-color: rgba(255, 255, 255, 0.2) !important;
         }
         [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stMetricValue"] {
-            color: #f4c095 !important;
+            color: #ffffff !important;
         }
         [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stMetricLabel"] {
-            color: #d9c2b3 !important;
+            color: #cccccc !important;
+        }
+        /* About info box in dark mode */
+        [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stAlert"],
+        .st-emotion-cache-1gwvy71 [data-testid="stSidebar"] [data-testid="stAlert"] {
+            background: rgba(255, 255, 255, 0.1) !important;
+            border-color: rgba(255, 255, 255, 0.2) !important;
+        }
+        [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stAlert"] p,
+        .st-emotion-cache-1gwvy71 [data-testid="stSidebar"] [data-testid="stAlert"] p {
+            color: #ffffff !important;
         }
         
         /* Tab styling */
