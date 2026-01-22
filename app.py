@@ -471,6 +471,10 @@ def init_session_state():
 
     if 'generated_images' not in st.session_state:
         st.session_state.generated_images = []
+    
+    # Track the last generated image for display after rerun
+    if 'last_generated_image' not in st.session_state:
+        st.session_state.last_generated_image = None
 
 
 def load_data():
@@ -1786,10 +1790,7 @@ def render_post_analysis(df: pd.DataFrame):
                                         print(f"[APP DEBUG] Imagen enabled: {st.session_state.imagen_enabled}")
                                         print(f"[APP DEBUG] Has credentials: {st.session_state.imagen_credentials is not None}")
 
-                                        # Show immediate feedback
-                                        st.info(f"🔄 Button clicked! Credentials loaded: {st.session_state.imagen_credentials is not None}")
-
-                                        with st.spinner("Generating image with Imagen 2..."):
+                                        with st.spinner("Generating image with Imagen 2... This may take 10-15 seconds."):
                                             try:
                                                 print(f"[APP DEBUG] Starting image generation...")
 
@@ -1817,26 +1818,38 @@ def render_post_analysis(df: pd.DataFrame):
 
                                                     save_generated_image(result['images'][0], str(image_path))
 
-                                                    # Display the generated image
-                                                    st.success(f"✅ Image generated successfully!")
-                                                    st.image(str(image_path), caption=f"Generated: {prompt_data['prompt'][:50]}...", use_container_width=True)
-
-                                                    # Add to session state
-                                                    st.session_state.generated_images.append({
+                                                    # Store in session state for persistent display
+                                                    generated_info = {
                                                         'path': str(image_path),
                                                         'prompt': prompt_data['prompt'],
-                                                        'timestamp': timestamp
-                                                    })
-
-                                                    # Show cost estimate
-                                                    cost = estimate_imagen_cost(1)
-                                                    st.caption(f"💰 Estimated cost: ${cost:.3f}")
+                                                        'timestamp': timestamp,
+                                                        'cost': estimate_imagen_cost(1)
+                                                    }
+                                                    st.session_state.last_generated_image = generated_info
+                                                    st.session_state.generated_images.append(generated_info)
+                                                    
+                                                    # Rerun to show the image persistently
+                                                    st.rerun()
                                                 else:
-                                                    st.error("No images were generated")
+                                                    st.error("No images were generated. The API returned empty results.")
                                             except Exception as e:
                                                 st.error(f"Generation failed: {str(e)}")
                                                 if "quota" in str(e).lower() or "billing" in str(e).lower():
                                                     st.warning("💡 Make sure billing is enabled and you have remaining credits in your Google Cloud account.")
+                                                elif "permission" in str(e).lower() or "403" in str(e):
+                                                    st.warning("💡 Check that your service account has 'Vertex AI User' role and Imagen API is enabled.")
+                                
+                                # Display last generated image (persists after rerun)
+                                if st.session_state.last_generated_image:
+                                    last_img = st.session_state.last_generated_image
+                                    st.success(f"✅ Image generated successfully!")
+                                    st.image(last_img['path'], caption=f"Generated: {last_img['prompt'][:50]}...", use_container_width=True)
+                                    st.caption(f"💰 Estimated cost: ${last_img['cost']:.3f}")
+                                    
+                                    # Button to clear and generate another
+                                    if st.button("🗑️ Clear & Generate Another", key=f"clear_img_{idx}"):
+                                        st.session_state.last_generated_image = None
+                                        st.rerun()
                             elif prompt_data['type'] == 'Image' and not st.session_state.imagen_enabled:
                                 st.info("💡 Configure Imagen 2 in API Settings to generate images directly")
 
@@ -1918,10 +1931,7 @@ def render_post_analysis(df: pd.DataFrame):
                                     print(f"[APP DEBUG] Imagen enabled: {st.session_state.imagen_enabled}")
                                     print(f"[APP DEBUG] Has credentials: {st.session_state.imagen_credentials is not None}")
 
-                                    # Show immediate feedback
-                                    st.info(f"🔄 Button clicked! Credentials loaded: {st.session_state.imagen_credentials is not None}")
-
-                                    with st.spinner("Generating image with Imagen 2..."):
+                                    with st.spinner("Generating image with Imagen 2... This may take 10-15 seconds."):
                                         try:
                                             print(f"[APP DEBUG] Starting custom prompt image generation...")
 
@@ -1949,26 +1959,38 @@ def render_post_analysis(df: pd.DataFrame):
 
                                                 save_generated_image(result['images'][0], str(image_path))
 
-                                                # Display the generated image
-                                                st.success(f"✅ Image generated successfully!")
-                                                st.image(str(image_path), caption=f"Generated: {custom_prompt[:50]}...", use_container_width=True)
-
-                                                # Add to session state
-                                                st.session_state.generated_images.append({
+                                                # Store in session state for persistent display
+                                                generated_info = {
                                                     'path': str(image_path),
                                                     'prompt': custom_prompt,
-                                                    'timestamp': timestamp
-                                                })
-
-                                                # Show cost estimate
-                                                cost = estimate_imagen_cost(1)
-                                                st.caption(f"💰 Estimated cost: ${cost:.3f}")
+                                                    'timestamp': timestamp,
+                                                    'cost': estimate_imagen_cost(1)
+                                                }
+                                                st.session_state.last_generated_image = generated_info
+                                                st.session_state.generated_images.append(generated_info)
+                                                
+                                                # Rerun to show the image persistently
+                                                st.rerun()
                                             else:
-                                                st.error("No images were generated")
+                                                st.error("No images were generated. The API returned empty results.")
                                         except Exception as e:
                                             st.error(f"Generation failed: {str(e)}")
                                             if "quota" in str(e).lower() or "billing" in str(e).lower():
                                                 st.warning("💡 Make sure billing is enabled and you have remaining credits in your Google Cloud account.")
+                                            elif "permission" in str(e).lower() or "403" in str(e):
+                                                st.warning("💡 Check that your service account has 'Vertex AI User' role and Imagen API is enabled.")
+                                
+                                # Display last generated image (persists after rerun)
+                                if st.session_state.last_generated_image:
+                                    last_img = st.session_state.last_generated_image
+                                    st.success(f"✅ Image generated successfully!")
+                                    st.image(last_img['path'], caption=f"Generated: {last_img['prompt'][:50]}...", use_container_width=True)
+                                    st.caption(f"💰 Estimated cost: ${last_img['cost']:.3f}")
+                                    
+                                    # Button to clear and generate another
+                                    if st.button("🗑️ Clear & Generate Another", key="clear_img_custom"):
+                                        st.session_state.last_generated_image = None
+                                        st.rerun()
                         elif content_type == 'Image' and not st.session_state.imagen_enabled:
                             st.info("💡 Configure Imagen 2 in API Settings to generate images directly")
                 else:
