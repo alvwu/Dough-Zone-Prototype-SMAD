@@ -193,13 +193,66 @@ def load_css():
             color: #5a3a2b;
             font-size: 0.92rem;
         }
-        /* Sidebar styling */
+        /* Sidebar styling - Light Mode */
         [data-testid="stSidebar"] {
             background: linear-gradient(180deg, #fff8f0 0%, #f9e2c7 100%);
         }
         [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
             color: #2d1b12;
         }
+        
+        /* Dark Mode Support */
+        @media (prefers-color-scheme: dark) {
+            [data-testid="stSidebar"] {
+                background: linear-gradient(180deg, #1a1a1a 0%, #2d2015 100%) !important;
+            }
+            [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+                color: #f4c095 !important;
+            }
+            [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+            [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] span,
+            [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] label {
+                color: #e8d5c4 !important;
+            }
+            [data-testid="stSidebar"] hr {
+                border-color: rgba(232, 166, 109, 0.3) !important;
+            }
+            [data-testid="stSidebar"] .stRadio label {
+                color: #e8d5c4 !important;
+            }
+            [data-testid="stSidebar"] [data-testid="stMetricValue"] {
+                color: #f4c095 !important;
+            }
+            [data-testid="stSidebar"] [data-testid="stMetricLabel"] {
+                color: #d9c2b3 !important;
+            }
+        }
+        
+        /* Streamlit's built-in dark theme detection */
+        [data-theme="dark"] [data-testid="stSidebar"],
+        .st-emotion-cache-1gwvy71 [data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #1a1a1a 0%, #2d2015 100%) !important;
+        }
+        [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+        .st-emotion-cache-1gwvy71 [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+            color: #f4c095 !important;
+        }
+        [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+        [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] span,
+        [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] label,
+        [data-theme="dark"] [data-testid="stSidebar"] .stRadio label {
+            color: #e8d5c4 !important;
+        }
+        [data-theme="dark"] [data-testid="stSidebar"] hr {
+            border-color: rgba(232, 166, 109, 0.3) !important;
+        }
+        [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stMetricValue"] {
+            color: #f4c095 !important;
+        }
+        [data-theme="dark"] [data-testid="stSidebar"] [data-testid="stMetricLabel"] {
+            color: #d9c2b3 !important;
+        }
+        
         /* Tab styling */
         .stTabs [data-baseweb="tab-list"] {
             gap: 8px;
