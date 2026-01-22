@@ -1595,9 +1595,17 @@ def render_post_analysis(df: pd.DataFrame):
 
         st.markdown("---")
 
-        # Initialize session state for generated prompts
+        # Initialize ALL session state for the prompt generator
         if 'ai_generated_prompts' not in st.session_state:
             st.session_state.ai_generated_prompts = []
+        if 'prompt_gen_content_type' not in st.session_state:
+            st.session_state.prompt_gen_content_type = "Image"
+        if 'prompt_gen_style' not in st.session_state:
+            st.session_state.prompt_gen_style = "Auto (Based on Data)"
+        if 'prompt_gen_mode' not in st.session_state:
+            st.session_state.prompt_gen_mode = "Auto-Generate from Top Posts"
+        if 'imagen_aspect_ratios' not in st.session_state:
+            st.session_state.imagen_aspect_ratios = {}
 
         # Prompt Type Selection
         col_type, col_style = st.columns(2)
@@ -1605,14 +1613,20 @@ def render_post_analysis(df: pd.DataFrame):
             content_type = st.selectbox(
                 "Content Type",
                 ["Image", "Video", "Both"],
+                index=["Image", "Video", "Both"].index(st.session_state.prompt_gen_content_type),
+                key="prompt_content_type_select",
                 help="Choose whether to generate prompts for images, videos, or both"
             )
+            st.session_state.prompt_gen_content_type = content_type
         with col_style:
             style_preference = st.selectbox(
                 "Visual Style",
                 ["Auto (Based on Data)", "Cinematic", "Minimalist", "Vibrant", "Artistic", "Photorealistic", "Illustration"],
+                index=["Auto (Based on Data)", "Cinematic", "Minimalist", "Vibrant", "Artistic", "Photorealistic", "Illustration"].index(st.session_state.prompt_gen_style),
+                key="prompt_style_select",
                 help="Choose the visual style for generated prompts"
             )
+            st.session_state.prompt_gen_style = style_preference
 
         st.markdown("---")
 
@@ -1654,8 +1668,11 @@ def render_post_analysis(df: pd.DataFrame):
         gen_mode = st.radio(
             "Generation Mode",
             ["Auto-Generate from Top Posts", "Custom Parameters"],
+            index=["Auto-Generate from Top Posts", "Custom Parameters"].index(st.session_state.prompt_gen_mode),
+            key="prompt_gen_mode_radio",
             horizontal=True
         )
+        st.session_state.prompt_gen_mode = gen_mode
 
         if gen_mode == "Auto-Generate from Top Posts":
             st.info("AI prompts will be generated based on your top-performing posts' visual patterns and engagement data")
@@ -1774,105 +1791,161 @@ def render_post_analysis(df: pd.DataFrame):
                             # Imagen 2 generation option (only for images)
                             if prompt_data['type'] == 'Image' and st.session_state.imagen_enabled:
                                 st.markdown("---")
-                                col_gen, col_settings = st.columns([1, 1])
+                                
+                                # Initialize per-prompt generated image tracking
+                                prompt_key = f"generated_img_{idx}"
+                                if prompt_key not in st.session_state:
+                                    st.session_state[prompt_key] = None
+                                
+                                # Check if we already have a generated image for this prompt
+                                if st.session_state[prompt_key] is not None:
+                                    # Display the previously generated image
+                                    img_info = st.session_state[prompt_key]
+                                    st.success(f"✅ Image generated!")
+                                    st.image(img_info['path'], caption=f"Generated: {img_info['prompt'][:50]}...", use_container_width=True)
+                                    st.caption(f"💰 Cost: ${img_info['cost']:.3f} | Saved to: {img_info['path']}")
+                                    
+                                    if st.button("🔄 Generate New Image", key=f"regen_{idx}"):
+                                        st.session_state[prompt_key] = None
+                                        st.rerun()
+                                else:
+                                    # Show generation controls
+                                    col_settings, col_gen = st.columns([1, 1])
 
-                                with col_settings:
-                                    aspect_ratio = st.selectbox(
-                                        "Aspect Ratio",
-                                        ["1:1", "9:16", "16:9", "4:3", "3:4"],
-                                        key=f"aspect_{idx}",
-                                        help="Image dimensions"
-                                    )
+                                    with col_settings:
+                                        # Store aspect ratio in session state
+                                        ar_key = f"aspect_ratio_{idx}"
+                                        if ar_key not in st.session_state:
+                                            st.session_state[ar_key] = "1:1"
+                                        
+                                        aspect_ratio = st.selectbox(
+                                            "Aspect Ratio",
+                                            ["1:1", "9:16", "16:9", "4:3", "3:4"],
+                                            index=["1:1", "9:16", "16:9", "4:3", "3:4"].index(st.session_state[ar_key]),
+                                            key=f"aspect_select_{idx}",
+                                            help="Image dimensions"
+                                        )
+                                        st.session_state[ar_key] = aspect_ratio
 
-                                with col_gen:
-                                    if st.button(f"🎨 Generate with Imagen 2", key=f"gen_imagen_{idx}", use_container_width=True, type="primary"):
-                                        print(f"\n[APP DEBUG] Imagen button clicked for prompt #{idx}")
-                                        print(f"[APP DEBUG] Imagen enabled: {st.session_state.imagen_enabled}")
-                                        print(f"[APP DEBUG] Has credentials: {st.session_state.imagen_credentials is not None}")
-
-                                        with st.spinner("Generating image with Imagen 2... This may take 10-15 seconds."):
+                                    with col_gen:
+                                        generate_clicked = st.button(
+                                            f"🎨 Generate with Imagen 2", 
+                                            key=f"gen_imagen_{idx}", 
+                                            use_container_width=True, 
+                                            type="primary"
+                                        )
+                                    
+                                    # Handle generation outside the column context
+                                    if generate_clicked:
+                                        with st.spinner("🎨 Generating image with Imagen 2... This may take 10-15 seconds."):
                                             try:
-                                                print(f"[APP DEBUG] Starting image generation...")
-
                                                 # Validate credentials exist
                                                 if not st.session_state.imagen_credentials:
                                                     st.error("❌ No Imagen credentials found. Please configure them in Settings.")
-                                                    st.stop()
-
-                                                # Create output directory
-                                                GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
-
-                                                # Generate image
-                                                result = generate_image_with_imagen(
-                                                    prompt=prompt_data['prompt'],
-                                                    credentials_dict=st.session_state.imagen_credentials,
-                                                    number_of_images=1,
-                                                    aspect_ratio=aspect_ratio
-                                                )
-
-                                                if result['images']:
-                                                    # Save the generated image
-                                                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                                    image_filename = f"imagen_{timestamp}.png"
-                                                    image_path = GENERATED_IMAGES_DIR / image_filename
-
-                                                    save_generated_image(result['images'][0], str(image_path))
-
-                                                    # Store in session state for persistent display
-                                                    generated_info = {
-                                                        'path': str(image_path),
-                                                        'prompt': prompt_data['prompt'],
-                                                        'timestamp': timestamp,
-                                                        'cost': estimate_imagen_cost(1)
-                                                    }
-                                                    st.session_state.last_generated_image = generated_info
-                                                    st.session_state.generated_images.append(generated_info)
-                                                    
-                                                    # Rerun to show the image persistently
-                                                    st.rerun()
                                                 else:
-                                                    st.error("No images were generated. The API returned empty results.")
+                                                    # Create output directory
+                                                    GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
+
+                                                    # Generate image
+                                                    result = generate_image_with_imagen(
+                                                        prompt=prompt_data['prompt'],
+                                                        credentials_dict=st.session_state.imagen_credentials,
+                                                        number_of_images=1,
+                                                        aspect_ratio=st.session_state[ar_key]
+                                                    )
+
+                                                    if result and result.get('images'):
+                                                        # Save the generated image
+                                                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                                        image_filename = f"imagen_{idx}_{timestamp}.png"
+                                                        image_path = GENERATED_IMAGES_DIR / image_filename
+
+                                                        save_generated_image(result['images'][0], str(image_path))
+
+                                                        # Store in session state for THIS prompt
+                                                        generated_info = {
+                                                            'path': str(image_path),
+                                                            'prompt': prompt_data['prompt'],
+                                                            'timestamp': timestamp,
+                                                            'cost': estimate_imagen_cost(1)
+                                                        }
+                                                        st.session_state[prompt_key] = generated_info
+                                                        st.session_state.generated_images.append(generated_info)
+                                                        
+                                                        # Rerun to show the image
+                                                        st.rerun()
+                                                    else:
+                                                        st.error("❌ No images were generated. The API returned empty results.")
                                             except Exception as e:
-                                                st.error(f"Generation failed: {str(e)}")
+                                                st.error(f"❌ Generation failed: {str(e)}")
                                                 if "quota" in str(e).lower() or "billing" in str(e).lower():
                                                     st.warning("💡 Make sure billing is enabled and you have remaining credits in your Google Cloud account.")
                                                 elif "permission" in str(e).lower() or "403" in str(e):
                                                     st.warning("💡 Check that your service account has 'Vertex AI User' role and Imagen API is enabled.")
-                                
-                                # Display last generated image (persists after rerun)
-                                if st.session_state.last_generated_image:
-                                    last_img = st.session_state.last_generated_image
-                                    st.success(f"✅ Image generated successfully!")
-                                    st.image(last_img['path'], caption=f"Generated: {last_img['prompt'][:50]}...", use_container_width=True)
-                                    st.caption(f"💰 Estimated cost: ${last_img['cost']:.3f}")
-                                    
-                                    # Button to clear and generate another
-                                    if st.button("🗑️ Clear & Generate Another", key=f"clear_img_{idx}"):
-                                        st.session_state.last_generated_image = None
-                                        st.rerun()
                             elif prompt_data['type'] == 'Image' and not st.session_state.imagen_enabled:
                                 st.info("💡 Configure Imagen 2 in API Settings to generate images directly")
 
         else:  # Custom Parameters mode
             st.info("Customize your AI prompt generation parameters")
+            
+            # Initialize session state for custom prompt inputs
+            if 'custom_subject' not in st.session_state:
+                st.session_state.custom_subject = ""
+            if 'custom_mood' not in st.session_state:
+                st.session_state.custom_mood = ""
+            if 'custom_colors' not in st.session_state:
+                st.session_state.custom_colors = ""
+            if 'custom_lighting' not in st.session_state:
+                st.session_state.custom_lighting = ""
+            if 'custom_details' not in st.session_state:
+                st.session_state.custom_details = ""
+            if 'last_custom_prompt' not in st.session_state:
+                st.session_state.last_custom_prompt = None
 
             col_subject, col_mood = st.columns(2)
             with col_subject:
-                subject = st.text_input("Subject/Theme", placeholder="e.g., coffee cup, sunset, fashion")
+                subject = st.text_input(
+                    "Subject/Theme", 
+                    value=st.session_state.custom_subject,
+                    placeholder="e.g., coffee cup, sunset, fashion",
+                    key="subject_input"
+                )
+                st.session_state.custom_subject = subject
             with col_mood:
-                mood = st.text_input("Mood/Atmosphere", placeholder="e.g., cozy, energetic, elegant")
+                mood = st.text_input(
+                    "Mood/Atmosphere", 
+                    value=st.session_state.custom_mood,
+                    placeholder="e.g., cozy, energetic, elegant",
+                    key="mood_input"
+                )
+                st.session_state.custom_mood = mood
 
             col_colors, col_lighting = st.columns(2)
             with col_colors:
-                colors = st.text_input("Color Palette", placeholder="e.g., warm tones, pastel, monochrome")
+                colors = st.text_input(
+                    "Color Palette", 
+                    value=st.session_state.custom_colors,
+                    placeholder="e.g., warm tones, pastel, monochrome",
+                    key="colors_input"
+                )
+                st.session_state.custom_colors = colors
             with col_lighting:
-                lighting = st.text_input("Lighting", placeholder="e.g., golden hour, soft, dramatic")
+                lighting = st.text_input(
+                    "Lighting", 
+                    value=st.session_state.custom_lighting,
+                    placeholder="e.g., golden hour, soft, dramatic",
+                    key="lighting_input"
+                )
+                st.session_state.custom_lighting = lighting
 
             additional_details = st.text_area(
                 "Additional Details (Optional)",
+                value=st.session_state.custom_details,
                 placeholder="Add any specific elements, composition notes, or special requirements...",
-                height=100
+                height=100,
+                key="details_input"
             )
+            st.session_state.custom_details = additional_details
 
             if st.button("🎨 Generate Custom Prompt", use_container_width=True, type="primary"):
                 if subject:
@@ -1899,102 +1972,107 @@ def render_post_analysis(df: pd.DataFrame):
                     custom_prompt += ", high quality, professional"
 
                     # Store custom prompt in session state
+                    st.session_state.last_custom_prompt = custom_prompt
                     st.session_state.ai_generated_prompts = [{
                         "type": content_type,
                         "prompt": custom_prompt,
                         "style": style_preference,
                         "source": "Custom"
                     }]
-
-                    st.success("✅ Custom prompt generated!")
-                    with st.expander(f"{'🖼️' if content_type == 'Image' else '🎬'} Your Custom Prompt", expanded=True):
-                        st.text_area("AI Prompt", custom_prompt, height=120, key="custom_prompt_display")
-                        st.code(custom_prompt, language=None)
-                        st.caption("**Recommended Tools:** Midjourney, DALL-E 3, Stable Diffusion, Leonardo.AI")
-
-                        # Imagen 2 generation option for custom prompts (only for images)
-                        if content_type == 'Image' and st.session_state.imagen_enabled:
-                            st.markdown("---")
-                            col_gen_custom, col_settings_custom = st.columns([1, 1])
-
-                            with col_settings_custom:
-                                aspect_ratio_custom = st.selectbox(
-                                    "Aspect Ratio",
-                                    ["1:1", "9:16", "16:9", "4:3", "3:4"],
-                                    key="aspect_custom",
-                                    help="Image dimensions"
-                                )
-
-                            with col_gen_custom:
-                                if st.button("🎨 Generate with Imagen 2", key="gen_imagen_custom", use_container_width=True, type="primary"):
-                                    print(f"\n[APP DEBUG] Imagen button clicked for custom prompt")
-                                    print(f"[APP DEBUG] Imagen enabled: {st.session_state.imagen_enabled}")
-                                    print(f"[APP DEBUG] Has credentials: {st.session_state.imagen_credentials is not None}")
-
-                                    with st.spinner("Generating image with Imagen 2... This may take 10-15 seconds."):
-                                        try:
-                                            print(f"[APP DEBUG] Starting custom prompt image generation...")
-
-                                            # Validate credentials exist
-                                            if not st.session_state.imagen_credentials:
-                                                st.error("❌ No Imagen credentials found. Please configure them in Settings.")
-                                                st.stop()
-
-                                            # Create output directory
-                                            GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
-
-                                            # Generate image
-                                            result = generate_image_with_imagen(
-                                                prompt=custom_prompt,
-                                                credentials_dict=st.session_state.imagen_credentials,
-                                                number_of_images=1,
-                                                aspect_ratio=aspect_ratio_custom
-                                            )
-
-                                            if result['images']:
-                                                # Save the generated image
-                                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                                image_filename = f"imagen_custom_{timestamp}.png"
-                                                image_path = GENERATED_IMAGES_DIR / image_filename
-
-                                                save_generated_image(result['images'][0], str(image_path))
-
-                                                # Store in session state for persistent display
-                                                generated_info = {
-                                                    'path': str(image_path),
-                                                    'prompt': custom_prompt,
-                                                    'timestamp': timestamp,
-                                                    'cost': estimate_imagen_cost(1)
-                                                }
-                                                st.session_state.last_generated_image = generated_info
-                                                st.session_state.generated_images.append(generated_info)
-                                                
-                                                # Rerun to show the image persistently
-                                                st.rerun()
-                                            else:
-                                                st.error("No images were generated. The API returned empty results.")
-                                        except Exception as e:
-                                            st.error(f"Generation failed: {str(e)}")
-                                            if "quota" in str(e).lower() or "billing" in str(e).lower():
-                                                st.warning("💡 Make sure billing is enabled and you have remaining credits in your Google Cloud account.")
-                                            elif "permission" in str(e).lower() or "403" in str(e):
-                                                st.warning("💡 Check that your service account has 'Vertex AI User' role and Imagen API is enabled.")
-                                
-                                # Display last generated image (persists after rerun)
-                                if st.session_state.last_generated_image:
-                                    last_img = st.session_state.last_generated_image
-                                    st.success(f"✅ Image generated successfully!")
-                                    st.image(last_img['path'], caption=f"Generated: {last_img['prompt'][:50]}...", use_container_width=True)
-                                    st.caption(f"💰 Estimated cost: ${last_img['cost']:.3f}")
-                                    
-                                    # Button to clear and generate another
-                                    if st.button("🗑️ Clear & Generate Another", key="clear_img_custom"):
-                                        st.session_state.last_generated_image = None
-                                        st.rerun()
-                        elif content_type == 'Image' and not st.session_state.imagen_enabled:
-                            st.info("💡 Configure Imagen 2 in API Settings to generate images directly")
+                    # Clear the generated image when creating a new prompt
+                    st.session_state.custom_generated_img = None
+                    st.rerun()
                 else:
                     st.warning("Please enter at least a subject/theme to generate a custom prompt")
+            
+            # Display the generated custom prompt (persists after rerun)
+            if st.session_state.last_custom_prompt:
+                custom_prompt = st.session_state.last_custom_prompt
+                st.success("✅ Custom prompt generated!")
+                with st.expander(f"{'🖼️' if content_type == 'Image' else '🎬'} Your Custom Prompt", expanded=True):
+                    st.text_area("AI Prompt", custom_prompt, height=120, key="custom_prompt_display")
+                    st.code(custom_prompt, language=None)
+                    st.caption("**Recommended Tools:** Midjourney, DALL-E 3, Stable Diffusion, Leonardo.AI")
+
+                # Imagen 2 generation option for custom prompts (only for images)
+                if content_type == 'Image' and st.session_state.imagen_enabled:
+                    st.markdown("---")
+                    
+                    # Initialize custom prompt generated image tracking
+                    if 'custom_generated_img' not in st.session_state:
+                        st.session_state.custom_generated_img = None
+                    if 'custom_aspect_ratio' not in st.session_state:
+                        st.session_state.custom_aspect_ratio = "1:1"
+                    
+                    # Check if we already have a generated image
+                    if st.session_state.custom_generated_img is not None:
+                        img_info = st.session_state.custom_generated_img
+                        st.success(f"✅ Image generated!")
+                        st.image(img_info['path'], caption=f"Generated: {img_info['prompt'][:50]}...", use_container_width=True)
+                        st.caption(f"💰 Cost: ${img_info['cost']:.3f} | Saved to: {img_info['path']}")
+                        
+                        if st.button("🔄 Generate New Image", key="regen_custom"):
+                            st.session_state.custom_generated_img = None
+                            st.rerun()
+                    else:
+                        col_settings_custom, col_gen_custom = st.columns([1, 1])
+
+                        with col_settings_custom:
+                            aspect_ratio_custom = st.selectbox(
+                                "Aspect Ratio",
+                                ["1:1", "9:16", "16:9", "4:3", "3:4"],
+                                index=["1:1", "9:16", "16:9", "4:3", "3:4"].index(st.session_state.custom_aspect_ratio),
+                                key="aspect_custom_select",
+                                help="Image dimensions"
+                            )
+                            st.session_state.custom_aspect_ratio = aspect_ratio_custom
+
+                        with col_gen_custom:
+                            generate_custom_clicked = st.button(
+                                "🎨 Generate with Imagen 2", 
+                                key="gen_imagen_custom", 
+                                use_container_width=True, 
+                                type="primary"
+                            )
+                        
+                        # Handle generation outside the column context
+                        if generate_custom_clicked:
+                            with st.spinner("🎨 Generating image with Imagen 2... This may take 10-15 seconds."):
+                                try:
+                                    if not st.session_state.imagen_credentials:
+                                        st.error("❌ No Imagen credentials found. Please configure them in Settings.")
+                                    else:
+                                        GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
+                                        result = generate_image_with_imagen(
+                                            prompt=custom_prompt,
+                                            credentials_dict=st.session_state.imagen_credentials,
+                                            number_of_images=1,
+                                            aspect_ratio=st.session_state.custom_aspect_ratio
+                                        )
+                                        if result and result.get('images'):
+                                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                            image_filename = f"imagen_custom_{timestamp}.png"
+                                            image_path = GENERATED_IMAGES_DIR / image_filename
+                                            save_generated_image(result['images'][0], str(image_path))
+                                            generated_info = {
+                                                'path': str(image_path),
+                                                'prompt': custom_prompt,
+                                                'timestamp': timestamp,
+                                                'cost': estimate_imagen_cost(1)
+                                            }
+                                            st.session_state.custom_generated_img = generated_info
+                                            st.session_state.generated_images.append(generated_info)
+                                            st.rerun()
+                                        else:
+                                            st.error("❌ No images were generated. The API returned empty results.")
+                                except Exception as e:
+                                    st.error(f"❌ Generation failed: {str(e)}")
+                                    if "quota" in str(e).lower() or "billing" in str(e).lower():
+                                        st.warning("💡 Make sure billing is enabled and you have remaining credits.")
+                                    elif "permission" in str(e).lower() or "403" in str(e):
+                                        st.warning("💡 Check that your service account has 'Vertex AI User' role.")
+                elif content_type == 'Image' and not st.session_state.imagen_enabled:
+                    st.info("💡 Configure Imagen 2 in API Settings to generate images directly")
 
         st.markdown("---")
 
