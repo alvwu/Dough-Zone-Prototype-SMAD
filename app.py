@@ -1589,88 +1589,70 @@ def render_post_analysis(df: pd.DataFrame):
     # --- AI PROMPT GENERATOR TAB ---
     with tab_ai_prompt:
         st.subheader("🤖 AI Prompt Generator")
-        st.markdown("Generate creative AI image and video prompts based on your top-performing content")
+        st.markdown("Generate creative AI image and video prompts based on your top-performing content, then create images instantly with Nano Banana!")
 
         st.markdown("---")
 
-        # Initialize ALL session state for the prompt generator
+        # Initialize session state for the prompt generator
         if 'ai_generated_prompts' not in st.session_state:
             st.session_state.ai_generated_prompts = []
-        if 'prompt_gen_content_type' not in st.session_state:
-            st.session_state.prompt_gen_content_type = "Image"
-        if 'prompt_gen_style' not in st.session_state:
-            st.session_state.prompt_gen_style = "Auto (Based on Data)"
-        if 'prompt_gen_mode' not in st.session_state:
-            st.session_state.prompt_gen_mode = "Auto-Generate from Top Posts"
-        if 'imagen_aspect_ratios' not in st.session_state:
-            st.session_state.imagen_aspect_ratios = {}
+        if 'generated_images_data' not in st.session_state:
+            st.session_state.generated_images_data = {}
+        if 'show_custom_prompt_result' not in st.session_state:
+            st.session_state.show_custom_prompt_result = False
 
-        # Prompt Type Selection
-        col_type, col_style = st.columns(2)
-        with col_type:
-            content_type = st.selectbox(
-                "Content Type",
-                ["Image", "Video", "Both"],
-                index=["Image", "Video", "Both"].index(st.session_state.prompt_gen_content_type),
-                key="prompt_content_type_select",
-                help="Choose whether to generate prompts for images, videos, or both"
-            )
-            st.session_state.prompt_gen_content_type = content_type
-        with col_style:
-            style_preference = st.selectbox(
-                "Visual Style",
-                ["Auto (Based on Data)", "Cinematic", "Minimalist", "Vibrant", "Artistic", "Photorealistic", "Illustration"],
-                index=["Auto (Based on Data)", "Cinematic", "Minimalist", "Vibrant", "Artistic", "Photorealistic", "Illustration"].index(st.session_state.prompt_gen_style),
-                key="prompt_style_select",
-                help="Choose the visual style for generated prompts"
-            )
-            st.session_state.prompt_gen_style = style_preference
+        # Settings Section
+        with st.container():
+            col_mode, col_type, col_style = st.columns(3)
+
+            with col_mode:
+                gen_mode = st.selectbox(
+                    "📋 Generation Mode",
+                    ["Data-Based", "Custom"],
+                    help="Data-Based: Analyze your top posts | Custom: Define your own parameters"
+                )
+
+            with col_type:
+                content_type = st.selectbox(
+                    "🎨 Content Type",
+                    ["Image", "Video"],
+                    help="Type of content to generate prompts for"
+                )
+
+            with col_style:
+                style_preference = st.selectbox(
+                    "✨ Visual Style",
+                    ["Auto", "Cinematic", "Minimalist", "Vibrant", "Artistic", "Photorealistic", "Illustration"],
+                    help="Visual style for the generated prompts"
+                )
 
         st.markdown("---")
 
-        # Analyze top posts to generate insights
-        st.markdown("### 📊 Content Performance Analysis")
-
-        # Get top performing posts
+        # Get top performing posts for insights
         top_performers = df_processed.sort_values('total_engagement', ascending=False).head(10)
 
-        # Extract insights from top posts
-        col_insight1, col_insight2, col_insight3 = st.columns(3)
-
-        with col_insight1:
-            st.metric("Avg Engagement (Top 10)", f"{int(top_performers['total_engagement'].mean()):,}")
-        with col_insight2:
-            # Get most common visual elements if Vision API data available
-            if st.session_state.vision_results:
-                all_labels = []
-                for vision_data in st.session_state.vision_results.values():
+        # Extract common themes from top posts
+        common_themes = []
+        common_colors = []
+        if st.session_state.vision_results:
+            for img_file in top_performers['image_file'].head(5):
+                if img_file in st.session_state.vision_results:
+                    vision_data = st.session_state.vision_results[img_file]
                     if vision_data.get('labels'):
-                        all_labels.extend([l.strip() for l in vision_data['labels'].split(',')])
-                if all_labels:
-                    top_element = pd.Series(all_labels).value_counts().index[0]
-                    st.metric("Top Visual Element", top_element)
-                else:
-                    st.metric("Vision Analysis", "Not Available")
-            else:
-                st.metric("Vision Analysis", "Not Available")
-        with col_insight3:
-            avg_caption_top = top_performers['caption_length'].mean()
-            st.metric("Avg Caption Length (Top)", f"{int(avg_caption_top)} chars")
+                        common_themes.extend([l.strip() for l in vision_data['labels'].split(',')])
+                    if vision_data.get('dominant_colors'):
+                        common_colors.extend([c.strip() for c in vision_data['dominant_colors'].split(',')])
 
-        st.markdown("---")
+        # Get most common themes
+        if common_themes:
+            top_themes = pd.Series(common_themes).value_counts().head(5).index.tolist()
+        else:
+            top_themes = ["lifestyle", "product", "aesthetic", "creative", "modern"]
 
-        # AI Prompt Generation Section
-        st.markdown("### ✨ Generate AI Prompts")
-
-        # Prompt generation mode
-        gen_mode = st.radio(
-            "Generation Mode",
-            ["Auto-Generate from Top Posts", "Custom Parameters"],
-            index=["Auto-Generate from Top Posts", "Custom Parameters"].index(st.session_state.prompt_gen_mode),
-            key="prompt_gen_mode_radio",
-            horizontal=True
-        )
-        st.session_state.prompt_gen_mode = gen_mode
+        if common_colors:
+            top_colors = pd.Series(common_colors).value_counts().head(3).index.tolist()
+        else:
+            top_colors = ["warm tones", "vibrant", "natural"]
 
         if gen_mode == "Auto-Generate from Top Posts":
             st.info("AI prompts will be generated based on your top-performing posts' visual patterns and engagement data")
@@ -1795,98 +1777,94 @@ def render_post_analysis(df: pd.DataFrame):
                                 if prompt_key not in st.session_state:
                                     st.session_state[prompt_key] = None
                                 
-                                # Check if we already have a generated image for this prompt
-                                if st.session_state[prompt_key] is not None:
-                                    # Display the previously generated image
-                                    img_info = st.session_state[prompt_key]
-                                    st.success(f"✅ Image generated!")
-                                    st.image(img_info['path'], caption=f"Generated: {img_info['prompt'][:50]}...", use_container_width=True)
-                                    st.caption(f"💰 Cost: ${img_info['cost']:.3f} | Saved to: {img_info['path']}")
-                                    
-                                    if st.button("🔄 Generate New Image", key=f"regen_{idx}"):
-                                        st.session_state[prompt_key] = None
-                                        st.rerun()
-                                else:
-                                    # Show generation controls
-                                    col_settings, col_gen = st.columns([1, 1])
+                                # Show generation controls
+                                col_settings, col_gen = st.columns([1, 1])
 
-                                    with col_settings:
-                                        # Store aspect ratio in session state
-                                        ar_key = f"aspect_ratio_{idx}"
-                                        if ar_key not in st.session_state:
-                                            st.session_state[ar_key] = "1:1"
-                                        
-                                        aspect_ratio = st.selectbox(
-                                            "Aspect Ratio",
-                                            ["1:1", "9:16", "16:9", "4:3", "3:4"],
-                                            index=["1:1", "9:16", "16:9", "4:3", "3:4"].index(st.session_state[ar_key]),
-                                            key=f"aspect_select_{idx}",
-                                            help="Image dimensions"
-                                        )
-                                        st.session_state[ar_key] = aspect_ratio
+                                with col_settings:
+                                    # Store aspect ratio in session state
+                                    ar_key = f"aspect_ratio_{idx}"
+                                    if ar_key not in st.session_state:
+                                        st.session_state[ar_key] = "1:1"
 
-                                    with col_gen:
-                                        generate_clicked = st.button(
-                                            f"🎨 Generate with Nano Banana", 
-                                            key=f"gen_imagen_{idx}", 
-                                            use_container_width=True, 
-                                            type="primary"
-                                        )
-                                    
-                                    # Handle generation outside the column context
-                                    if generate_clicked:
-                                        generation_success = False
-                                        generation_error = None
-                                        
-                                        with st.spinner("🎨 Generating image with Nano Banana... This may take 10-15 seconds."):
-                                            try:
-                                                # Validate API key exists
-                                                if not st.session_state.imagen_api_key:
-                                                    st.error("❌ No Nano Banana API key found. Please configure it in Settings.")
+                                    aspect_ratio = st.selectbox(
+                                        "Aspect Ratio",
+                                        ["1:1", "9:16", "16:9", "4:3", "3:4"],
+                                        index=["1:1", "9:16", "16:9", "4:3", "3:4"].index(st.session_state[ar_key]),
+                                        key=f"aspect_select_{idx}",
+                                        help="Image dimensions"
+                                    )
+                                    st.session_state[ar_key] = aspect_ratio
+
+                                with col_gen:
+                                    generate_clicked = st.button(
+                                        f"🎨 Generate Image",
+                                        key=f"gen_imagen_{idx}",
+                                        use_container_width=True,
+                                        type="primary"
+                                    )
+
+                                # Handle generation
+                                if generate_clicked:
+                                    with st.spinner("🍌 Generating with Nano Banana... (10-15 seconds)"):
+                                        try:
+                                            # Validate API key exists
+                                            if not st.session_state.imagen_api_key:
+                                                st.error("❌ No Nano Banana API key found. Please configure it in Settings.")
+                                            else:
+                                                # Create output directory
+                                                GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
+
+                                                # Generate image
+                                                result = generate_image_with_imagen(
+                                                    prompt=prompt_data['prompt'],
+                                                    api_key=st.session_state.imagen_api_key,
+                                                    number_of_images=1,
+                                                    aspect_ratio=st.session_state[ar_key]
+                                                )
+
+                                                if result and result.get('images'):
+                                                    # Save the generated image
+                                                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                                    image_filename = f"nanobanana_{idx}_{timestamp}.png"
+                                                    image_path = GENERATED_IMAGES_DIR / image_filename
+
+                                                    save_generated_image(result['images'][0], str(image_path))
+
+                                                    # Store in session state for THIS prompt
+                                                    generated_info = {
+                                                        'path': str(image_path),
+                                                        'prompt': prompt_data['prompt'],
+                                                        'timestamp': timestamp,
+                                                        'cost': estimate_imagen_cost(1)
+                                                    }
+                                                    st.session_state[prompt_key] = generated_info
+                                                    if 'generated_images' not in st.session_state:
+                                                        st.session_state.generated_images = []
+                                                    st.session_state.generated_images.append(generated_info)
+
+                                                    # Display the generated image immediately
+                                                    st.success("✅ Image generated successfully!")
+                                                    st.image(str(image_path), use_container_width=True)
+                                                    st.caption(f"💰 Cost: ${generated_info['cost']:.3f} | 📁 Saved to: {str(image_path)}")
                                                 else:
-                                                    # Create output directory
-                                                    GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
-
-                                                    # Generate image
-                                                    result = generate_image_with_imagen(
-                                                        prompt=prompt_data['prompt'],
-                                                        api_key=st.session_state.imagen_api_key,
-                                                        number_of_images=1,
-                                                        aspect_ratio=st.session_state[ar_key]
-                                                    )
-
-                                                    if result and result.get('images'):
-                                                        # Save the generated image
-                                                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                                        image_filename = f"imagen_{idx}_{timestamp}.png"
-                                                        image_path = GENERATED_IMAGES_DIR / image_filename
-
-                                                        save_generated_image(result['images'][0], str(image_path))
-
-                                                        # Store in session state for THIS prompt
-                                                        generated_info = {
-                                                            'path': str(image_path),
-                                                            'prompt': prompt_data['prompt'],
-                                                            'timestamp': timestamp,
-                                                            'cost': estimate_imagen_cost(1)
-                                                        }
-                                                        st.session_state[prompt_key] = generated_info
-                                                        st.session_state.generated_images.append(generated_info)
-                                                        generation_success = True
-                                                    else:
-                                                        st.error("❌ No images were generated. The API returned empty results.")
-                                            except Exception as e:
-                                                generation_error = str(e)
-                                        
-                                        # Handle results OUTSIDE the try/except block
-                                        if generation_success:
-                                            st.rerun()
-                                        elif generation_error:
-                                            st.error(f"❌ Generation failed: {generation_error}")
-                                            if "quota" in generation_error.lower() or "billing" in generation_error.lower():
-                                                st.warning("💡 Make sure billing is enabled and you have remaining credits in your Google Cloud account.")
-                                            elif "permission" in generation_error.lower() or "403" in generation_error:
+                                                    st.error("❌ No images were generated. The API returned empty results.")
+                                        except Exception as e:
+                                            st.error(f"❌ Generation failed: {str(e)}")
+                                            if "quota" in str(e).lower() or "billing" in str(e).lower():
+                                                st.warning("💡 Make sure billing is enabled and you have remaining credits.")
+                                            elif "permission" in str(e).lower() or "403" in str(e):
                                                 st.warning("💡 Check that your API key is valid and Nano Banana API is enabled in Google AI Studio.")
+
+                                # Show previously generated image if exists
+                                if st.session_state[prompt_key] is not None and not generate_clicked:
+                                    st.markdown("---")
+                                    img_info = st.session_state[prompt_key]
+                                    st.info("📸 Previously Generated Image:")
+                                    st.image(img_info['path'], use_container_width=True)
+                                    st.caption(f"💰 Cost: ${img_info['cost']:.3f} | 📁 {img_info['path']}")
+
+                                    if st.button("🗑️ Clear", key=f"clear_{idx}"):
+                                        st.session_state[prompt_key] = None
                             elif prompt_data['type'] == 'Image' and not st.session_state.imagen_enabled:
                                 st.info("💡 Configure Nano Banana in API Settings to generate images directly")
 
@@ -1986,7 +1964,6 @@ def render_post_analysis(df: pd.DataFrame):
                     }]
                     # Clear the generated image when creating a new prompt
                     st.session_state.custom_generated_img = None
-                    st.rerun()
                 else:
                     st.warning("Please enter at least a subject/theme to generate a custom prompt")
             
@@ -2002,89 +1979,87 @@ def render_post_analysis(df: pd.DataFrame):
                 # Nano Banana generation option for custom prompts (only for images)
                 if content_type == 'Image' and st.session_state.imagen_enabled:
                     st.markdown("---")
-                    
+                    st.markdown("**🍌 Generate Image with Nano Banana**")
+
                     # Initialize custom prompt generated image tracking
                     if 'custom_generated_img' not in st.session_state:
                         st.session_state.custom_generated_img = None
                     if 'custom_aspect_ratio' not in st.session_state:
                         st.session_state.custom_aspect_ratio = "1:1"
-                    
-                    # Check if we already have a generated image
-                    if st.session_state.custom_generated_img is not None:
-                        img_info = st.session_state.custom_generated_img
-                        st.success(f"✅ Image generated!")
-                        st.image(img_info['path'], caption=f"Generated: {img_info['prompt'][:50]}...", use_container_width=True)
-                        st.caption(f"💰 Cost: ${img_info['cost']:.3f} | Saved to: {img_info['path']}")
-                        
-                        if st.button("🔄 Generate New Image", key="regen_custom"):
-                            st.session_state.custom_generated_img = None
-                            st.rerun()
-                    else:
-                        col_settings_custom, col_gen_custom = st.columns([1, 1])
 
-                        with col_settings_custom:
-                            aspect_ratio_custom = st.selectbox(
-                                "Aspect Ratio",
-                                ["1:1", "9:16", "16:9", "4:3", "3:4"],
-                                index=["1:1", "9:16", "16:9", "4:3", "3:4"].index(st.session_state.custom_aspect_ratio),
-                                key="aspect_custom_select",
-                                help="Image dimensions"
-                            )
-                            st.session_state.custom_aspect_ratio = aspect_ratio_custom
+                    col_settings_custom, col_gen_custom = st.columns([1, 1])
 
-                        with col_gen_custom:
-                            generate_custom_clicked = st.button(
-                                "🎨 Generate with Nano Banana", 
-                                key="gen_imagen_custom", 
-                                use_container_width=True, 
-                                type="primary"
-                            )
-                        
-                        # Handle generation outside the column context
-                        if generate_custom_clicked:
-                            generation_success = False
-                            generation_error = None
-                            
-                            with st.spinner("🎨 Generating image with Nano Banana... This may take 10-15 seconds."):
-                                try:
-                                    if not st.session_state.imagen_api_key:
-                                        st.error("❌ No Nano Banana API key found. Please configure it in Settings.")
+                    with col_settings_custom:
+                        aspect_ratio_custom = st.selectbox(
+                            "Aspect Ratio",
+                            ["1:1", "9:16", "16:9", "4:3", "3:4"],
+                            index=["1:1", "9:16", "16:9", "4:3", "3:4"].index(st.session_state.custom_aspect_ratio),
+                            key="aspect_custom_select",
+                            help="Image dimensions"
+                        )
+                        st.session_state.custom_aspect_ratio = aspect_ratio_custom
+
+                    with col_gen_custom:
+                        generate_custom_clicked = st.button(
+                            "🎨 Generate Image",
+                            key="gen_imagen_custom",
+                            use_container_width=True,
+                            type="primary"
+                        )
+
+                    # Handle generation
+                    if generate_custom_clicked:
+                        with st.spinner("🍌 Generating with Nano Banana... (10-15 seconds)"):
+                            try:
+                                if not st.session_state.imagen_api_key:
+                                    st.error("❌ No Nano Banana API key found. Please configure it in Settings.")
+                                else:
+                                    GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
+                                    result = generate_image_with_imagen(
+                                        prompt=custom_prompt,
+                                        api_key=st.session_state.imagen_api_key,
+                                        number_of_images=1,
+                                        aspect_ratio=st.session_state.custom_aspect_ratio
+                                    )
+                                    if result and result.get('images'):
+                                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                        image_filename = f"nanobanana_custom_{timestamp}.png"
+                                        image_path = GENERATED_IMAGES_DIR / image_filename
+                                        save_generated_image(result['images'][0], str(image_path))
+                                        generated_info = {
+                                            'path': str(image_path),
+                                            'prompt': custom_prompt,
+                                            'timestamp': timestamp,
+                                            'cost': estimate_imagen_cost(1)
+                                        }
+                                        st.session_state.custom_generated_img = generated_info
+                                        if 'generated_images' not in st.session_state:
+                                            st.session_state.generated_images = []
+                                        st.session_state.generated_images.append(generated_info)
+
+                                        # Display the generated image immediately
+                                        st.success("✅ Image generated successfully!")
+                                        st.image(str(image_path), use_container_width=True)
+                                        st.caption(f"💰 Cost: ${generated_info['cost']:.3f} | 📁 Saved to: {str(image_path)}")
                                     else:
-                                        GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
-                                        result = generate_image_with_imagen(
-                                            prompt=custom_prompt,
-                                            api_key=st.session_state.imagen_api_key,
-                                            number_of_images=1,
-                                            aspect_ratio=st.session_state.custom_aspect_ratio
-                                        )
-                                        if result and result.get('images'):
-                                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                            image_filename = f"imagen_custom_{timestamp}.png"
-                                            image_path = GENERATED_IMAGES_DIR / image_filename
-                                            save_generated_image(result['images'][0], str(image_path))
-                                            generated_info = {
-                                                'path': str(image_path),
-                                                'prompt': custom_prompt,
-                                                'timestamp': timestamp,
-                                                'cost': estimate_imagen_cost(1)
-                                            }
-                                            st.session_state.custom_generated_img = generated_info
-                                            st.session_state.generated_images.append(generated_info)
-                                            generation_success = True
-                                        else:
-                                            st.error("❌ No images were generated. The API returned empty results.")
-                                except Exception as e:
-                                    generation_error = str(e)
-                            
-                            # Handle results OUTSIDE the try/except block
-                            if generation_success:
-                                st.rerun()
-                            elif generation_error:
-                                st.error(f"❌ Generation failed: {generation_error}")
-                                if "quota" in generation_error.lower() or "billing" in generation_error.lower():
+                                        st.error("❌ No images were generated. The API returned empty results.")
+                            except Exception as e:
+                                st.error(f"❌ Generation failed: {str(e)}")
+                                if "quota" in str(e).lower() or "billing" in str(e).lower():
                                     st.warning("💡 Make sure billing is enabled and you have remaining credits.")
-                                elif "permission" in generation_error.lower() or "403" in generation_error:
+                                elif "permission" in str(e).lower() or "403" in str(e):
                                     st.warning("💡 Check that your API key is valid and Nano Banana API is enabled in Google AI Studio.")
+
+                    # Show previously generated image if exists
+                    if st.session_state.custom_generated_img is not None and not generate_custom_clicked:
+                        st.info("📸 Previously Generated Image:")
+                        img_info = st.session_state.custom_generated_img
+                        st.image(img_info['path'], use_container_width=True)
+                        st.caption(f"💰 Cost: ${img_info['cost']:.3f} | 📁 {img_info['path']}")
+
+                        if st.button("🗑️ Clear", key="clear_custom"):
+                            st.session_state.custom_generated_img = None
+
                 elif content_type == 'Image' and not st.session_state.imagen_enabled:
                     st.info("💡 Configure Nano Banana in API Settings to generate images directly")
 
