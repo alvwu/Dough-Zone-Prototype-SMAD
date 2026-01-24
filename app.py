@@ -1570,20 +1570,15 @@ def render_post_analysis(df: pd.DataFrame):
         st.markdown("Generate creative AI image and video prompts, then create images instantly with Vertex AI Imagen!")
 
         # Quick guide
-        with st.expander("ℹ️ How to Use - Three Generation Modes"):
+        with st.expander("ℹ️ How to Use - Two Generation Modes"):
             st.markdown("""
-            **1. 🤖 Data-Based (AI)** (Most Powerful - Recommended)
+            **1. 🤖 Recommended** (AI-Powered)
             - Uses **Gemini 2.0 Flash via OpenRouter** to intelligently analyze your data
             - Considers engagement patterns, visual themes, colors, and captions
             - Creates highly contextual and creative prompts
             - Requires OpenRouter API (falls back to templates if not configured)
 
-            **2. 🌟 Recommended** (Quick & Easy)
-            - Generates prompts based on **Google Vision API labels** detected in your top posts
-            - Perfect for quick ideation
-            - Uses actual visual elements from your successful content
-
-            **3. ✏️ Custom** (Full Control)
+            **2. ✏️ Custom** (Full Control)
             - Define your own subject, mood, colors, and lighting
             - Perfect when you have a specific vision in mind
             - No API required
@@ -1606,8 +1601,8 @@ def render_post_analysis(df: pd.DataFrame):
             with col_mode:
                 gen_mode = st.selectbox(
                     "📋 Generation Mode",
-                    ["Data-Based (AI)", "Recommended", "Custom"],
-                    help="Data-Based: AI analyzes top posts | Recommended: Quick prompts from Vision labels | Custom: Your own parameters"
+                    ["Recommended", "Custom"],
+                    help="Recommended: AI analyzes your top posts | Custom: Define your own parameters"
                 )
 
             with col_type:
@@ -1652,88 +1647,8 @@ def render_post_analysis(df: pd.DataFrame):
         else:
             top_colors = ["warm tones", "vibrant", "natural"]
 
-        # ============== RECOMMENDED MODE (Vision Labels) ==============
+        # ============== RECOMMENDED MODE (AI-Powered) ==============
         if gen_mode == "Recommended":
-            st.info("✨ Quick prompts generated from Google Vision API labels detected in your top posts")
-
-            # Check if Vision API results exist
-            if not st.session_state.vision_results or len(st.session_state.vision_results) == 0:
-                st.warning("⚠️ No Vision API data available. Please analyze images in the API Settings tab first.")
-            else:
-                num_prompts = st.slider("Number of Prompts to Generate", 1, 10, 3, key="recommended_num_prompts")
-
-                if st.button("✨ Generate Recommended Prompts", use_container_width=True, type="primary", key="gen_recommended"):
-                    with st.spinner("Generating prompts from Vision labels..."):
-                        generated_prompts = []
-
-                        # Extract top labels from Vision API results
-                        all_labels = []
-                        for img_file in top_performers['image_file'].head(10):
-                            if img_file in st.session_state.vision_results:
-                                vision_data = st.session_state.vision_results[img_file]
-                                if vision_data.get('labels'):
-                                    labels_list = [l.strip() for l in vision_data['labels'].split(',')]
-                                    all_labels.extend(labels_list[:3])  # Top 3 labels per image
-
-                        if all_labels:
-                            # Get most common labels
-                            label_counts = pd.Series(all_labels).value_counts()
-                            top_labels = label_counts.head(10).index.tolist()
-
-                            # Get top colors
-                            all_colors = []
-                            for img_file in top_performers['image_file'].head(5):
-                                if img_file in st.session_state.vision_results:
-                                    vision_data = st.session_state.vision_results[img_file]
-                                    if vision_data.get('dominant_colors'):
-                                        colors_list = [c.strip() for c in vision_data['dominant_colors'].split(',')]
-                                        all_colors.extend(colors_list[:2])
-
-                            top_colors = pd.Series(all_colors).value_counts().head(3).index.tolist() if all_colors else ["warm tones", "vibrant"]
-
-                            # Style mapping
-                            style_map = {
-                                "Auto": "",
-                                "Cinematic": ", cinematic lighting, film grain, depth of field",
-                                "Minimalist": ", minimalist design, clean composition, negative space",
-                                "Vibrant": ", vibrant colors, high saturation, energetic",
-                                "Artistic": ", artistic interpretation, creative expression",
-                                "Photorealistic": ", photorealistic, highly detailed, professional photography",
-                                "Illustration": ", digital illustration, stylized, artistic rendering"
-                            }
-                            style_suffix = style_map.get(style_preference, "")
-
-                            # Generate prompts using top labels
-                            for i in range(num_prompts):
-                                label = top_labels[i % len(top_labels)]
-                                color = top_colors[i % len(top_colors)]
-
-                                if content_type == "Image":
-                                    prompt = f"A stunning {label} scene with {color} color palette{style_suffix}, professional composition, high quality, engaging"
-                                else:  # Video
-                                    prompt = f"Dynamic video featuring {label}, {color} color grading, smooth camera movements{style_suffix}, 4K quality"
-
-                                generated_prompts.append({
-                                    "type": content_type,
-                                    "prompt": prompt,
-                                    "style": style_preference,
-                                    "source": "Recommended (Vision Labels)",
-                                    "based_on": label
-                                })
-
-                            st.session_state.ai_generated_prompts = generated_prompts
-                            st.success(f"✅ Generated {len(generated_prompts)} recommended prompts based on Vision API labels!")
-
-                            # Show which labels were used
-                            with st.expander("📊 Vision Labels Used"):
-                                st.write("**Top detected labels in your high-performing posts:**")
-                                for idx, (label, count) in enumerate(label_counts.head(5).items(), 1):
-                                    st.write(f"{idx}. **{label}** (appears {count} times)")
-                        else:
-                            st.warning("No Vision labels found. Please analyze images first in the API Settings tab.")
-
-        # ============== DATA-BASED MODE (AI-Powered) ==============
-        elif gen_mode == "Data-Based (AI)":
             st.info("🤖 AI-powered prompt generation by analyzing your top-performing posts")
 
             # Show which AI model is being used
@@ -1743,9 +1658,16 @@ def render_post_analysis(df: pd.DataFrame):
                 st.warning("⚠️ OpenRouter API not configured. Will use template-based generation instead.")
                 st.caption("💡 Configure OpenRouter API in Settings to enable AI-powered generation")
 
-            num_prompts = st.slider("Number of Prompts to Generate", 1, 10, 3, key="ai_num_prompts")
+            # Generate button (always generates 1 prompt at a time)
+            num_prompts = 1
 
-            if st.button("🤖 Generate AI Prompts", use_container_width=True, type="primary", key="gen_ai_prompts"):
+            col_gen, col_regen = st.columns(2)
+            with col_gen:
+                generate_btn = st.button("🎨 Generate Prompt", use_container_width=True, type="primary", key="gen_ai_prompts")
+            with col_regen:
+                regenerate_btn = st.button("🔄 Regenerate", use_container_width=True, key="regen_ai_prompts", disabled=len(st.session_state.ai_generated_prompts) == 0)
+
+            if generate_btn or regenerate_btn:
                 # Check if Gemini is enabled and use AI-powered generation
                 if st.session_state.gemini_enabled and st.session_state.gemini_api_key:
                     with st.spinner("🤖 Using Gemini AI to analyze your content and generate prompts..."):
@@ -1759,8 +1681,8 @@ def render_post_analysis(df: pd.DataFrame):
 
                         if generated_prompts:
                             st.session_state.ai_generated_prompts = generated_prompts
-                            st.success(f"✅ Generated {len(generated_prompts)} AI-powered prompts using Gemini!")
-                            st.info("🤖 These prompts were intelligently generated by analyzing your top-performing content")
+                            st.success("✅ Prompt generated using Gemini AI!")
+                            st.info("🤖 This prompt was intelligently generated by analyzing your top-performing content")
                         else:
                             st.error("Failed to generate prompts with Gemini. Please check your API key in Settings.")
                             st.session_state.ai_generated_prompts = []
@@ -1832,13 +1754,13 @@ def render_post_analysis(df: pd.DataFrame):
                                 })
 
                         st.session_state.ai_generated_prompts = generated_prompts
-                        st.success(f"✅ Generated {len(generated_prompts)} prompts!")
-                        st.info("💡 Enable AI API in Settings for AI-powered prompt generation with Gemini 2.0")
+                        st.success("✅ Prompt generated!")
+                        st.info("💡 Enable OpenRouter API in Settings for AI-powered prompt generation with Gemini 2.0")
 
                 # Display generated prompts
                 if st.session_state.ai_generated_prompts:
                     for idx, prompt_data in enumerate(st.session_state.ai_generated_prompts, 1):
-                        with st.expander(f"{'🖼️' if prompt_data['type'] == 'Image' else '🎬'} Prompt #{idx} - {prompt_data['type']}", expanded=True):
+                        with st.expander(f"{'🖼️' if prompt_data['type'] == 'Image' else '🎬'} Generated {prompt_data['type']} Prompt", expanded=True):
                             st.text_area(
                                 "AI Prompt",
                                 prompt_data['prompt'],
