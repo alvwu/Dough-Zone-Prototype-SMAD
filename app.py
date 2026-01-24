@@ -1567,7 +1567,27 @@ def render_post_analysis(df: pd.DataFrame):
     # --- AI PROMPT GENERATOR TAB ---
     with tab_ai_prompt:
         st.subheader("🤖 AI Prompt Generator")
-        st.markdown("Generate creative AI image and video prompts based on your top-performing content, then create images instantly with Nano Banana!")
+        st.markdown("Generate creative AI image and video prompts, then create images instantly with Vertex AI Imagen!")
+
+        # Quick guide
+        with st.expander("ℹ️ How to Use - Three Generation Modes"):
+            st.markdown("""
+            **1. 🌟 Recommended** (Quick & Easy)
+            - Generates prompts based on **Google Vision API labels** detected in your top posts
+            - Perfect for quick ideation
+            - Uses actual visual elements from your successful content
+
+            **2. 🤖 Data-Based (AI)** (Most Powerful)
+            - Uses **Gemini 2.0 Flash via OpenRouter** to intelligently analyze your data
+            - Considers engagement patterns, visual themes, colors, and captions
+            - Creates highly contextual and creative prompts
+            - Requires OpenRouter API (falls back to templates if not configured)
+
+            **3. ✏️ Custom** (Full Control)
+            - Define your own subject, mood, colors, and lighting
+            - Perfect when you have a specific vision in mind
+            - No API required
+            """)
 
         st.markdown("---")
 
@@ -1586,8 +1606,8 @@ def render_post_analysis(df: pd.DataFrame):
             with col_mode:
                 gen_mode = st.selectbox(
                     "📋 Generation Mode",
-                    ["Data-Based", "Custom"],
-                    help="Data-Based: Analyze your top posts | Custom: Define your own parameters"
+                    ["Recommended", "Data-Based (AI)", "Custom"],
+                    help="Recommended: Quick prompts from Vision labels | Data-Based: AI analyzes top posts | Custom: Your own parameters"
                 )
 
             with col_type:
@@ -1632,12 +1652,100 @@ def render_post_analysis(df: pd.DataFrame):
         else:
             top_colors = ["warm tones", "vibrant", "natural"]
 
-        if gen_mode == "Auto-Generate from Top Posts":
-            st.info("AI prompts will be generated based on your top-performing posts' visual patterns and engagement data")
+        # ============== RECOMMENDED MODE (Vision Labels) ==============
+        if gen_mode == "Recommended":
+            st.info("✨ Quick prompts generated from Google Vision API labels detected in your top posts")
 
-            num_prompts = st.slider("Number of Prompts to Generate", 1, 10, 3)
+            # Check if Vision API results exist
+            if not st.session_state.vision_results or len(st.session_state.vision_results) == 0:
+                st.warning("⚠️ No Vision API data available. Please analyze images in the API Settings tab first.")
+            else:
+                num_prompts = st.slider("Number of Prompts to Generate", 1, 10, 3, key="recommended_num_prompts")
 
-            if st.button("🎨 Generate AI Prompts", use_container_width=True, type="primary"):
+                if st.button("✨ Generate Recommended Prompts", use_container_width=True, type="primary", key="gen_recommended"):
+                    with st.spinner("Generating prompts from Vision labels..."):
+                        generated_prompts = []
+
+                        # Extract top labels from Vision API results
+                        all_labels = []
+                        for img_file in top_performers['image_file'].head(10):
+                            if img_file in st.session_state.vision_results:
+                                vision_data = st.session_state.vision_results[img_file]
+                                if vision_data.get('labels'):
+                                    labels_list = [l.strip() for l in vision_data['labels'].split(',')]
+                                    all_labels.extend(labels_list[:3])  # Top 3 labels per image
+
+                        if all_labels:
+                            # Get most common labels
+                            label_counts = pd.Series(all_labels).value_counts()
+                            top_labels = label_counts.head(10).index.tolist()
+
+                            # Get top colors
+                            all_colors = []
+                            for img_file in top_performers['image_file'].head(5):
+                                if img_file in st.session_state.vision_results:
+                                    vision_data = st.session_state.vision_results[img_file]
+                                    if vision_data.get('dominant_colors'):
+                                        colors_list = [c.strip() for c in vision_data['dominant_colors'].split(',')]
+                                        all_colors.extend(colors_list[:2])
+
+                            top_colors = pd.Series(all_colors).value_counts().head(3).index.tolist() if all_colors else ["warm tones", "vibrant"]
+
+                            # Style mapping
+                            style_map = {
+                                "Auto": "",
+                                "Cinematic": ", cinematic lighting, film grain, depth of field",
+                                "Minimalist": ", minimalist design, clean composition, negative space",
+                                "Vibrant": ", vibrant colors, high saturation, energetic",
+                                "Artistic": ", artistic interpretation, creative expression",
+                                "Photorealistic": ", photorealistic, highly detailed, professional photography",
+                                "Illustration": ", digital illustration, stylized, artistic rendering"
+                            }
+                            style_suffix = style_map.get(style_preference, "")
+
+                            # Generate prompts using top labels
+                            for i in range(num_prompts):
+                                label = top_labels[i % len(top_labels)]
+                                color = top_colors[i % len(top_colors)]
+
+                                if content_type == "Image":
+                                    prompt = f"A stunning {label} scene with {color} color palette{style_suffix}, professional composition, high quality, engaging"
+                                else:  # Video
+                                    prompt = f"Dynamic video featuring {label}, {color} color grading, smooth camera movements{style_suffix}, 4K quality"
+
+                                generated_prompts.append({
+                                    "type": content_type,
+                                    "prompt": prompt,
+                                    "style": style_preference,
+                                    "source": "Recommended (Vision Labels)",
+                                    "based_on": label
+                                })
+
+                            st.session_state.ai_generated_prompts = generated_prompts
+                            st.success(f"✅ Generated {len(generated_prompts)} recommended prompts based on Vision API labels!")
+
+                            # Show which labels were used
+                            with st.expander("📊 Vision Labels Used"):
+                                st.write("**Top detected labels in your high-performing posts:**")
+                                for idx, (label, count) in enumerate(label_counts.head(5).items(), 1):
+                                    st.write(f"{idx}. **{label}** (appears {count} times)")
+                        else:
+                            st.warning("No Vision labels found. Please analyze images first in the API Settings tab.")
+
+        # ============== DATA-BASED MODE (AI-Powered) ==============
+        elif gen_mode == "Data-Based (AI)":
+            st.info("🤖 AI-powered prompt generation by analyzing your top-performing posts")
+
+            # Show which AI model is being used
+            if st.session_state.gemini_enabled and st.session_state.gemini_api_key:
+                st.success("✅ Using **Gemini 2.0 Flash** (`google/gemini-2.0-flash-001`) via OpenRouter API")
+            else:
+                st.warning("⚠️ OpenRouter API not configured. Will use template-based generation instead.")
+                st.caption("💡 Configure OpenRouter API in Settings to enable AI-powered generation")
+
+            num_prompts = st.slider("Number of Prompts to Generate", 1, 10, 3, key="ai_num_prompts")
+
+            if st.button("🤖 Generate AI Prompts", use_container_width=True, type="primary", key="gen_ai_prompts"):
                 # Check if Gemini is enabled and use AI-powered generation
                 if st.session_state.gemini_enabled and st.session_state.gemini_api_key:
                     with st.spinner("🤖 Using Gemini AI to analyze your content and generate prompts..."):
@@ -1746,7 +1854,7 @@ def render_post_analysis(df: pd.DataFrame):
                                 st.caption(f"**Style:** {prompt_data['style']}")
                                 st.caption("**Tools:** Midjourney, DALL-E 3, Stable Diffusion, Runway ML")
 
-                            # Nano Banana generation option (only for images)
+                            # Vertex AI Imagen generation option (only for images)
                             if prompt_data['type'] == 'Image' and st.session_state.imagen_enabled:
                                 st.markdown("---")
                                 
@@ -1783,7 +1891,7 @@ def render_post_analysis(df: pd.DataFrame):
 
                                 # Handle generation
                                 if generate_clicked:
-                                    with st.spinner("🍌 Generating with Nano Banana... (10-15 seconds)"):
+                                    with st.spinner("🎨 Generating with Vertex AI Imagen... (10-15 seconds)"):
                                         try:
                                             # Validate API key exists
                                             if not st.session_state.vision_credentials:
@@ -1803,7 +1911,7 @@ def render_post_analysis(df: pd.DataFrame):
                                                 if result and result.get('images'):
                                                     # Save the generated image
                                                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                                    image_filename = f"nanobanana_{idx}_{timestamp}.png"
+                                                    image_filename = f"imagen_{idx}_{timestamp}.png"
                                                     image_path = GENERATED_IMAGES_DIR / image_filename
 
                                                     save_generated_image(result['images'][0], str(image_path))
@@ -1831,7 +1939,7 @@ def render_post_analysis(df: pd.DataFrame):
                                             if "quota" in str(e).lower() or "billing" in str(e).lower():
                                                 st.warning("💡 Make sure billing is enabled and you have remaining credits.")
                                             elif "permission" in str(e).lower() or "403" in str(e):
-                                                st.warning("💡 Check that your API key is valid and Nano Banana API is enabled in Google AI Studio.")
+                                                st.warning("💡 Check that your API key is valid and Vertex AI Imagen API is enabled in Google AI Studio.")
 
                                 # Show previously generated image if exists
                                 if st.session_state[prompt_key] is not None and not generate_clicked:
@@ -1844,10 +1952,11 @@ def render_post_analysis(df: pd.DataFrame):
                                     if st.button("🗑️ Clear", key=f"clear_{idx}"):
                                         st.session_state[prompt_key] = None
                             elif prompt_data['type'] == 'Image' and not st.session_state.imagen_enabled:
-                                st.info("💡 Configure Nano Banana in API Settings to generate images directly")
+                                st.info("💡 Configure Vertex AI Imagen in API Settings to generate images directly")
 
-        else:  # Custom Parameters mode
-            st.info("Customize your AI prompt generation parameters")
+        # ============== CUSTOM MODE ==============
+        else:  # gen_mode == "Custom"
+            st.info("✏️ Create custom prompts with your own parameters")
             
             # Initialize session state for custom prompt inputs
             if 'custom_subject' not in st.session_state:
@@ -1954,10 +2063,10 @@ def render_post_analysis(df: pd.DataFrame):
                     st.code(custom_prompt, language=None)
                     st.caption("**Recommended Tools:** Midjourney, DALL-E 3, Stable Diffusion, Leonardo.AI")
 
-                # Nano Banana generation option for custom prompts (only for images)
+                # Vertex AI Imagen generation option for custom prompts (only for images)
                 if content_type == 'Image' and st.session_state.imagen_enabled:
                     st.markdown("---")
-                    st.markdown("**🍌 Generate Image with Nano Banana**")
+                    st.markdown("**🎨 Generate Image with Vertex AI Imagen**")
 
                     # Initialize custom prompt generated image tracking
                     if 'custom_generated_img' not in st.session_state:
@@ -1987,7 +2096,7 @@ def render_post_analysis(df: pd.DataFrame):
 
                     # Handle generation
                     if generate_custom_clicked:
-                        with st.spinner("🍌 Generating with Nano Banana... (10-15 seconds)"):
+                        with st.spinner("🎨 Generating with Vertex AI Imagen... (10-15 seconds)"):
                             try:
                                 if not st.session_state.vision_credentials:
                                     st.error("❌ No Vision API credentials found. Please configure them in Settings.")
@@ -2001,7 +2110,7 @@ def render_post_analysis(df: pd.DataFrame):
                                     )
                                     if result and result.get('images'):
                                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                        image_filename = f"nanobanana_custom_{timestamp}.png"
+                                        image_filename = f"imagen_custom_{timestamp}.png"
                                         image_path = GENERATED_IMAGES_DIR / image_filename
                                         save_generated_image(result['images'][0], str(image_path))
                                         generated_info = {
@@ -2026,7 +2135,7 @@ def render_post_analysis(df: pd.DataFrame):
                                 if "quota" in str(e).lower() or "billing" in str(e).lower():
                                     st.warning("💡 Make sure billing is enabled and you have remaining credits.")
                                 elif "permission" in str(e).lower() or "403" in str(e):
-                                    st.warning("💡 Check that your API key is valid and Nano Banana API is enabled in Google AI Studio.")
+                                    st.warning("💡 Check that your API key is valid and Vertex AI Imagen API is enabled in Google AI Studio.")
 
                     # Show previously generated image if exists
                     if st.session_state.custom_generated_img is not None and not generate_custom_clicked:
@@ -2039,7 +2148,7 @@ def render_post_analysis(df: pd.DataFrame):
                             st.session_state.custom_generated_img = None
 
                 elif content_type == 'Image' and not st.session_state.imagen_enabled:
-                    st.info("💡 Configure Nano Banana in API Settings to generate images directly")
+                    st.info("💡 Configure Vertex AI Imagen in API Settings to generate images directly")
 
         st.markdown("---")
 
@@ -2054,7 +2163,7 @@ def render_post_analysis(df: pd.DataFrame):
             - Iterate on prompts that generate high-engagement content
 
             **Popular AI Tools:**
-            - **Images:** Google Nano Banana (integrated!), Midjourney, DALL-E 3, Stable Diffusion, Leonardo.AI
+            - **Images:** Google Vertex AI Imagen (integrated!), Midjourney, DALL-E 3, Stable Diffusion, Leonardo.AI
             - **Videos:** Runway ML, Pika Labs, Synthesia, D-ID
             - **Enhancement:** Topaz AI, Magnific AI, Krea.ai
 
