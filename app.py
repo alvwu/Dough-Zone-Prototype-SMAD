@@ -1757,123 +1757,123 @@ def render_post_analysis(df: pd.DataFrame):
                         st.success("✅ Prompt generated!")
                         st.info("💡 Enable OpenRouter API in Settings for AI-powered prompt generation with Gemini 2.0")
 
-                # Display generated prompts
-                if st.session_state.ai_generated_prompts:
-                    for idx, prompt_data in enumerate(st.session_state.ai_generated_prompts, 1):
-                        with st.expander(f"{'🖼️' if prompt_data['type'] == 'Image' else '🎬'} Generated {prompt_data['type']} Prompt", expanded=True):
-                            st.text_area(
-                                "AI Prompt",
-                                prompt_data['prompt'],
-                                height=100,
-                                key=f"prompt_{idx}",
-                                help="Copy this prompt to use in AI image/video generators like Midjourney, DALL-E, Runway, etc."
-                            )
+            # Display generated prompts (OUTSIDE the button block to prevent resets)
+            if st.session_state.ai_generated_prompts:
+                for idx, prompt_data in enumerate(st.session_state.ai_generated_prompts, 1):
+                    with st.expander(f"{'🖼️' if prompt_data['type'] == 'Image' else '🎬'} Generated {prompt_data['type']} Prompt", expanded=True):
+                        st.text_area(
+                            "AI Prompt",
+                            prompt_data['prompt'],
+                            height=100,
+                            key=f"prompt_{idx}",
+                            help="Copy this prompt to use in AI image/video generators like Midjourney, DALL-E, Runway, etc."
+                        )
 
-                            col_copy, col_tips = st.columns([1, 2])
-                            with col_copy:
-                                st.code(prompt_data['prompt'], language=None)
-                            with col_tips:
-                                st.caption(f"**Style:** {prompt_data['style']}")
-                                st.caption("**Tools:** Midjourney, DALL-E 3, Stable Diffusion, Runway ML")
+                        col_copy, col_tips = st.columns([1, 2])
+                        with col_copy:
+                            st.code(prompt_data['prompt'], language=None)
+                        with col_tips:
+                            st.caption(f"**Style:** {prompt_data['style']}")
+                            st.caption("**Tools:** Midjourney, DALL-E 3, Stable Diffusion, Runway ML")
 
-                            # Vertex AI Imagen generation option (only for images)
-                            if prompt_data['type'] == 'Image' and st.session_state.imagen_enabled:
-                                st.markdown("---")
-                                
-                                # Initialize per-prompt generated image tracking
-                                prompt_key = f"generated_img_{idx}"
-                                if prompt_key not in st.session_state:
-                                    st.session_state[prompt_key] = None
-                                
-                                # Show generation controls
-                                col_settings, col_gen = st.columns([1, 1])
+                        # Vertex AI Imagen generation option (only for images)
+                        if prompt_data['type'] == 'Image' and st.session_state.imagen_enabled:
+                            st.markdown("---")
 
-                                with col_settings:
-                                    # Store aspect ratio in session state
-                                    ar_key = f"aspect_ratio_{idx}"
-                                    if ar_key not in st.session_state:
-                                        st.session_state[ar_key] = "1:1"
+                            # Initialize per-prompt generated image tracking
+                            prompt_key = f"generated_img_{idx}"
+                            if prompt_key not in st.session_state:
+                                st.session_state[prompt_key] = None
 
-                                    aspect_ratio = st.selectbox(
-                                        "Aspect Ratio",
-                                        ["1:1", "9:16", "16:9", "4:3", "3:4"],
-                                        index=["1:1", "9:16", "16:9", "4:3", "3:4"].index(st.session_state[ar_key]),
-                                        key=ar_key,  # Use ar_key directly as the widget key
-                                        help="Image dimensions"
-                                    )
+                            # Show generation controls
+                            col_settings, col_gen = st.columns([1, 1])
 
-                                with col_gen:
-                                    generate_clicked = st.button(
-                                        f"🎨 Generate Image",
-                                        key=f"gen_imagen_{idx}",
-                                        use_container_width=True,
-                                        type="primary"
-                                    )
+                            with col_settings:
+                                # Store aspect ratio in session state
+                                ar_key = f"aspect_ratio_{idx}"
+                                if ar_key not in st.session_state:
+                                    st.session_state[ar_key] = "1:1"
 
-                                # Handle generation
-                                if generate_clicked:
-                                    with st.spinner("🎨 Generating with Vertex AI Imagen... (10-15 seconds)"):
-                                        try:
-                                            # Validate API key exists
-                                            if not st.session_state.vision_credentials:
-                                                st.error("❌ No Vision API credentials found. Please configure them in Settings.")
+                                aspect_ratio = st.selectbox(
+                                    "Aspect Ratio",
+                                    ["1:1", "9:16", "16:9", "4:3", "3:4"],
+                                    index=["1:1", "9:16", "16:9", "4:3", "3:4"].index(st.session_state[ar_key]),
+                                    key=ar_key,  # Use ar_key directly as the widget key
+                                    help="Image dimensions"
+                                )
+
+                            with col_gen:
+                                generate_clicked = st.button(
+                                    f"🎨 Generate Image",
+                                    key=f"gen_imagen_{idx}",
+                                    use_container_width=True,
+                                    type="primary"
+                                )
+
+                            # Handle generation
+                            if generate_clicked:
+                                with st.spinner("🎨 Generating with Vertex AI Imagen... (10-15 seconds)"):
+                                    try:
+                                        # Validate API key exists
+                                        if not st.session_state.vision_credentials:
+                                            st.error("❌ No Vision API credentials found. Please configure them in Settings.")
+                                        else:
+                                            # Create output directory
+                                            GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
+
+                                            # Generate image using Vision API credentials
+                                            result = generate_image_with_imagen(
+                                                prompt=prompt_data['prompt'],
+                                                credentials_dict=st.session_state.vision_credentials,
+                                                number_of_images=1,
+                                                aspect_ratio=st.session_state[ar_key]
+                                            )
+
+                                            if result and result.get('images'):
+                                                # Save the generated image
+                                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                                image_filename = f"imagen_{idx}_{timestamp}.png"
+                                                image_path = GENERATED_IMAGES_DIR / image_filename
+
+                                                save_generated_image(result['images'][0], str(image_path))
+
+                                                # Store in session state for THIS prompt
+                                                generated_info = {
+                                                    'path': str(image_path),
+                                                    'prompt': prompt_data['prompt'],
+                                                    'timestamp': timestamp,
+                                                    'cost': estimate_imagen_cost(1)
+                                                }
+                                                st.session_state[prompt_key] = generated_info
+                                                if 'generated_images' not in st.session_state:
+                                                    st.session_state.generated_images = []
+                                                st.session_state.generated_images.append(generated_info)
+
+                                                # Display the generated image immediately
+                                                st.success("✅ Image generated successfully!")
+                                                st.image(str(image_path), use_container_width=True)
+                                                st.caption(f"💰 Cost: ${generated_info['cost']:.3f} | 📁 Saved to: {str(image_path)}")
                                             else:
-                                                # Create output directory
-                                                GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
+                                                st.error("❌ No images were generated. The API returned empty results.")
+                                    except Exception as e:
+                                        st.error(f"❌ Generation failed: {str(e)}")
+                                        if "quota" in str(e).lower() or "billing" in str(e).lower():
+                                            st.warning("💡 Make sure billing is enabled and you have remaining credits.")
+                                        elif "permission" in str(e).lower() or "403" in str(e):
+                                            st.warning("💡 Check that your API key is valid and Vertex AI Imagen API is enabled in Google AI Studio.")
 
-                                                # Generate image using Vision API credentials
-                                                result = generate_image_with_imagen(
-                                                    prompt=prompt_data['prompt'],
-                                                    credentials_dict=st.session_state.vision_credentials,
-                                                    number_of_images=1,
-                                                    aspect_ratio=st.session_state[ar_key]
-                                                )
+                            # Show previously generated image if exists
+                            if st.session_state[prompt_key] is not None and not generate_clicked:
+                                st.markdown("---")
+                                img_info = st.session_state[prompt_key]
+                                st.info("📸 Previously Generated Image:")
+                                st.image(img_info['path'], use_container_width=True)
+                                st.caption(f"💰 Cost: ${img_info['cost']:.3f} | 📁 {img_info['path']}")
 
-                                                if result and result.get('images'):
-                                                    # Save the generated image
-                                                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                                    image_filename = f"imagen_{idx}_{timestamp}.png"
-                                                    image_path = GENERATED_IMAGES_DIR / image_filename
-
-                                                    save_generated_image(result['images'][0], str(image_path))
-
-                                                    # Store in session state for THIS prompt
-                                                    generated_info = {
-                                                        'path': str(image_path),
-                                                        'prompt': prompt_data['prompt'],
-                                                        'timestamp': timestamp,
-                                                        'cost': estimate_imagen_cost(1)
-                                                    }
-                                                    st.session_state[prompt_key] = generated_info
-                                                    if 'generated_images' not in st.session_state:
-                                                        st.session_state.generated_images = []
-                                                    st.session_state.generated_images.append(generated_info)
-
-                                                    # Display the generated image immediately
-                                                    st.success("✅ Image generated successfully!")
-                                                    st.image(str(image_path), use_container_width=True)
-                                                    st.caption(f"💰 Cost: ${generated_info['cost']:.3f} | 📁 Saved to: {str(image_path)}")
-                                                else:
-                                                    st.error("❌ No images were generated. The API returned empty results.")
-                                        except Exception as e:
-                                            st.error(f"❌ Generation failed: {str(e)}")
-                                            if "quota" in str(e).lower() or "billing" in str(e).lower():
-                                                st.warning("💡 Make sure billing is enabled and you have remaining credits.")
-                                            elif "permission" in str(e).lower() or "403" in str(e):
-                                                st.warning("💡 Check that your API key is valid and Vertex AI Imagen API is enabled in Google AI Studio.")
-
-                                # Show previously generated image if exists
-                                if st.session_state[prompt_key] is not None and not generate_clicked:
-                                    st.markdown("---")
-                                    img_info = st.session_state[prompt_key]
-                                    st.info("📸 Previously Generated Image:")
-                                    st.image(img_info['path'], use_container_width=True)
-                                    st.caption(f"💰 Cost: ${img_info['cost']:.3f} | 📁 {img_info['path']}")
-
-                                    if st.button("🗑️ Clear", key=f"clear_{idx}"):
-                                        st.session_state[prompt_key] = None
-                            elif prompt_data['type'] == 'Image' and not st.session_state.imagen_enabled:
-                                st.info("💡 Configure Vertex AI Imagen in API Settings to generate images directly")
+                                if st.button("🗑️ Clear", key=f"clear_{idx}"):
+                                    st.session_state[prompt_key] = None
+                        elif prompt_data['type'] == 'Image' and not st.session_state.imagen_enabled:
+                            st.info("💡 Configure Vertex AI Imagen in API Settings to generate images directly")
 
         # ============== CUSTOM MODE ==============
         else:  # gen_mode == "Custom"
