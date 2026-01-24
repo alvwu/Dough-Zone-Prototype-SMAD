@@ -51,15 +51,16 @@ AI-powered content prompt generation with two modes:
 - **Custom Parameters**:
   - Manually define subject, mood, colors, lighting
   - Generate tailored prompts for specific needs
-- **Nano Banana Integration**:
-  - Generate images directly from prompts using Google AI Studio Nano Banana API
+- **Vertex AI Imagen Integration**:
+  - Generate images directly from prompts using Google Vertex AI Imagen
   - Multiple aspect ratio options (1:1, 9:16, 16:9, 4:3, 3:4)
   - Real-time image generation with cost estimates
+  - Uses the same credentials as Vision API (no separate setup needed)
 
 #### ⚙️ API Settings
 - Google Vision API configuration (Service Account JSON)
 - OpenRouter API setup for Gemini 2.0 Flash
-- Google AI Studio Nano Banana API configuration for image generation (API key)
+- Vertex AI Imagen configuration (shares Vision API credentials)
 - Batch image analysis
 - API connection testing
 
@@ -95,7 +96,7 @@ Social Media Dashboard/
 ├── database.py                 # SQLite database operations
 ├── data_processing.py          # Feature engineering and data analysis
 ├── vision_api.py               # Google Cloud Vision API integration
-├── imagen_api.py               # Google AI Studio Nano Banana API integration
+├── imagen_api.py               # Google Vertex AI Imagen API integration
 ├── requirements.txt            # Python dependencies
 ├── data/                       # Folder for CSV data files
 │   └── insta_dummy_data(in).csv # Sample data
@@ -150,24 +151,31 @@ The dashboard expects CSV data with the following columns:
 - Pay-as-you-go pricing, very affordable
 - Enables AI-powered prompt generation based on your top-performing content
 
-### Google AI Studio Nano Banana API (for AI Image Generation)
+### Vertex AI Imagen (for AI Image Generation)
 
-1. Go to [Google AI Studio](https://aistudio.google.com/)
-2. Sign in with your Google account
-3. Click on **"Get API key"** in the left sidebar
-4. Click **"Create API key"** button
-5. Select an existing Google Cloud project or create a new one
-6. Copy the API key (starts with `AIza`)
-7. Enter it in the dashboard's **API Settings** tab under "Nano Banana API Settings"
-8. Click **Save API Key** and **Test Connection**
+Vertex AI Imagen automatically uses the same credentials as Google Vision API - no separate setup needed!
+
+**Prerequisites:**
+- Google Vision API must be configured (see above)
+- The same Service Account JSON file is used for both Vision and Imagen
+
+**Setup Steps:**
+1. Ensure you have already configured Google Vision API (see above section)
+2. In your Google Cloud project, enable the **Vertex AI API**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Navigate to **APIs & Services** > **Library**
+   - Search for "Vertex AI API"
+   - Click **Enable**
+3. The dashboard will automatically detect your Vision API credentials
+4. Click **Test Vertex AI Imagen** in the API Settings tab to verify
 
 **Notes:**
-- Free tier: First 50 images per day are free
-- After free tier: $0.04 per image (significantly cheaper than Vertex AI)
-- No credit card required for free tier
-- API key is simpler to use than Service Account credentials
+- Imagen uses the same Service Account JSON as Vision API
+- No separate API key or authentication needed
+- Pricing: $0.020 per image (standard resolution 1024x1024)
 - Supports multiple aspect ratios (1:1, 9:16, 16:9, 4:3, 3:4)
 - Images are saved to a local `generated_images/` folder
+- Billing must be enabled in your Google Cloud project
 
 ## Usage
 
@@ -203,7 +211,7 @@ The app automatically loads CSV files from the `data/` folder:
    - **Custom Parameters**: Create custom prompts with specific parameters
 4. Configure content type (Image/Video/Both) and style preference
 5. Click **Generate Prompts**
-6. Optionally, generate images directly using **Google AI Studio Nano Banana** (requires Nano Banana API key)
+6. Optionally, generate images directly using **Vertex AI Imagen** (requires Vision API credentials)
 
 ## Dependencies
 
@@ -219,20 +227,19 @@ The app automatically loads CSV files from the `data/` folder:
 - PyJWT >= 2.8.0
 - cryptography >= 41.0.0
 - openai >= 1.0.0 (for OpenRouter integration)
-- google-generativeai >= 0.3.0 (for Google AI Studio Nano Banana)
+- google-cloud-aiplatform >= 1.38.0 (for Vertex AI Imagen)
 - Pillow >= 10.0.0
 
 ## Cost Information
 
 ### Free Tier
 - **Google Vision API**: 1,000 requests/month free
-- **Google AI Studio Nano Banana**: 50 images per day free
-- **Google Cloud**: $300 in free credits for new accounts (for Vision API)
+- **Google Cloud**: $300 in free credits for new accounts
 - **OpenRouter**: Pay-as-you-go, very low cost per request
 
 ### Paid Usage
 - **Gemini 2.0 Flash** (via OpenRouter): ~$0.0001 per prompt generation
-- **Google AI Studio Nano Banana** (after free tier): $0.04 per image
+- **Vertex AI Imagen**: $0.020 per image (standard resolution)
 - **Vision API** (after free tier): ~$1.50 per 1,000 images
 
 ## Troubleshooting
@@ -246,12 +253,13 @@ The app automatically loads CSV files from the `data/` folder:
 - Make sure Cloud Vision API is enabled in your Google Cloud project
 - Check that billing is enabled (required even for free tier)
 
-### Google AI Studio Nano Banana not generating images
-- Verify your API key is correct (starts with 'AIza')
-- Make sure you haven't exceeded the daily free tier limit (50 images/day)
-- Check that Nano Banana API is enabled in your Google Cloud project
-- If using paid tier, ensure billing is enabled
+### Vertex AI Imagen not generating images
+- Verify your Vision API Service Account JSON is properly configured
+- Make sure Vertex AI API is enabled in your Google Cloud project
+- Check that billing is enabled (required for Imagen)
+- Ensure your Service Account has proper permissions (Vertex AI User role)
 - Check terminal output for detailed error messages
+- Try clicking "Test Vertex AI Imagen" in API Settings to diagnose issues
 
 ### OpenRouter API not working
 - Verify your API key starts with `sk-or-v1-`

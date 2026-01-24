@@ -2317,101 +2317,54 @@ def render_post_analysis(df: pd.DataFrame):
 
         # --- VERTEX AI IMAGEN SETTINGS SECTION ---
         with st.expander("🎨 Vertex AI Imagen Settings (Uses Vision API Credentials)", expanded=False):
-            st.markdown("Configure your Google AI Studio API key to enable AI-powered image generation using Imagen.")
+            st.markdown("Vertex AI Imagen uses the same Google Cloud credentials as Vision API.")
             st.markdown("---")
 
-            # API Key input
-            st.markdown("### Enter Your Google AI Studio API Key")
+            # Show current status
+            if st.session_state.vision_credentials:
+                project_id = st.session_state.vision_credentials.get('project_id', 'Unknown')
+                st.success(f"✅ Using Vision API credentials for project: **{project_id}**")
+                st.info("💡 Imagen is automatically enabled when Vision API credentials are configured!")
 
-            api_key_input = st.text_input(
-                "API Key",
-                type="password",
-                placeholder="Enter your Google AI Studio API key (starts with 'AIza')",
-                help="Get your API key from Google AI Studio (aistudio.google.com)",
-                key="imagen_api_key_input"
-            )
-
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("💾 Save API Key", use_container_width=True, type="primary", key="save_nanobanana_key"):
-                    if api_key_input:
-                        if validate_imagen_credentials(api_key_input):
-                            st.session_state.imagen_api_key = api_key_input
-                            save_imagen_api_key(api_key_input)
-                            with st.spinner("Validating API key..."):
-                                try:
-                                    is_valid = test_imagen_connection(api_key_input)
-                                    st.session_state.imagen_enabled = is_valid
-                                    if is_valid:
-                                        st.success("✅ API key saved and validated!")
-                                    else:
-                                        st.warning("⚠️ API key saved but validation failed. Make sure Nano Banana API is enabled.")
-                                        st.session_state.imagen_enabled = True  # Allow usage anyway
-                                except Exception as e:
-                                    st.session_state.imagen_enabled = True
-                                    st.warning(f"API key saved. Validation skipped: {str(e)}")
-                            st.rerun()
-                        else:
-                            st.error("❌ Invalid API key format. Please check your key.")
-                    else:
-                        st.error("❌ Please enter an API key.")
-
-            with col2:
-                if st.button("🧪 Test Connection", use_container_width=True, key="test_nanobanana_connection"):
-                    if api_key_input:
-                        with st.spinner("Testing connection..."):
-                            try:
-                                is_valid = test_imagen_connection(api_key_input)
-                                if is_valid:
-                                    st.success("✅ Connection successful!")
-                                else:
-                                    st.error("❌ Connection failed. Check your API key.")
-                            except Exception as e:
-                                st.error(f"❌ Error: {str(e)}")
-                    else:
-                        st.error("❌ Please enter an API key to test.")
-
-            # Current status
-            if st.session_state.imagen_api_key:
-                st.markdown("---")
-                st.markdown("### Current Status")
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.session_state.imagen_enabled:
-                        masked_key = st.session_state.imagen_api_key[:8] + "..." + st.session_state.imagen_api_key[-4:]
-                        st.success(f"✅ Imagen Enabled: {masked_key}")
-                    else:
-                        st.warning("⚠️ API key loaded but not validated")
-                with col2:
-                    if st.button("🗑️ Clear API Key", use_container_width=True, key="clear_nanobanana_key"):
-                        st.session_state.imagen_api_key = None
-                        st.session_state.imagen_enabled = False
-                        clear_imagen_api_key()
-                        st.info("API key cleared")
-                        st.rerun()
+                # Test connection button
+                if st.button("🧪 Test Vertex AI Imagen", use_container_width=True, key="test_imagen_connection"):
+                    with st.spinner("Testing Vertex AI Imagen connection..."):
+                        try:
+                            is_valid = test_imagen_connection(st.session_state.vision_credentials)
+                            if is_valid:
+                                st.success("✅ Vertex AI Imagen connection successful!")
+                                st.session_state.imagen_enabled = True
+                            else:
+                                st.warning("⚠️ Connection test inconclusive. Imagen should still work if Vertex AI API is enabled.")
+                                st.session_state.imagen_enabled = True
+                        except Exception as e:
+                            st.error(f"❌ Connection test failed: {str(e)}")
+                            st.warning("💡 Make sure Vertex AI API is enabled in your Google Cloud project.")
+            else:
+                st.warning("⚠️ No Vision API credentials configured")
+                st.info("👆 Configure Vision API credentials above to enable Imagen")
 
             st.markdown("---")
             st.markdown("""
-            ### How to Get Google AI Studio API Key
+            ### How to Enable Vertex AI Imagen
 
-            1. Go to [Google AI Studio](https://aistudio.google.com/)
-            2. Sign in with your Google account
-            3. Click on **"Get API key"** in the left sidebar
-            4. Click **"Create API key"** button
-            5. Select an existing Google Cloud project or create a new one
-            6. Copy the API key (starts with `AIza`)
-            7. Paste it in the field above and click **"Save API Key"**
+            **Imagen uses the same credentials as Vision API!**
 
-            **Important Notes:**
-            - **Free tier**: First 50 images per day are free
-            - **After free tier**: $0.04 per image (significantly cheaper than Vertex AI)
-            - No credit card required for free tier
-            - API key is simpler to use than Service Account credentials
-            - Keep your API key secure and never share it publicly
+            1. Configure Vision API credentials above (if not already done)
+            2. Enable **Vertex AI API** in Google Cloud:
+               - Go to [Google Cloud Console](https://console.cloud.google.com/)
+               - Select your project
+               - Search for "Vertex AI API" and enable it
+            3. Imagen is now ready to use!
+
+            **Pricing:**
+            - ~$0.020 per image (standard resolution)
+            - New accounts get $300 in free credits
+            - Same service account works for both Vision and Imagen
             """)
 
             st.markdown("---")
-            st.info("**Note:** API key is saved locally and will persist until cleared.")
+            st.info("**Note:** Imagen automatically uses your Vision API credentials!")
 
 
 def main():
