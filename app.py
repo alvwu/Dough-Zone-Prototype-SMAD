@@ -49,7 +49,7 @@ GENERATED_IMAGES_DIR = Path(__file__).parent / "generated_images"
 CREDENTIALS_FILE = Path(__file__).parent / ".vision_credentials.json"
 VISION_CACHE_FILE = Path(__file__).parent / ".vision_cache.json"
 GEMINI_KEY_FILE = Path(__file__).parent / ".gemini_key.txt"
-IMAGEN_API_KEY_FILE = Path(__file__).parent / ".imagen_api_key.txt"
+# Imagen uses the same credentials as Vision API (no separate file needed)
 
 # Warm orange color palette for charts
 CHART_COLORS = {
@@ -414,27 +414,7 @@ def clear_gemini_key():
         GEMINI_KEY_FILE.unlink()
 
 
-def load_imagen_api_key():
-    """Load Nano Banana API key from file if exists."""
-    if IMAGEN_API_KEY_FILE.exists():
-        try:
-            with open(IMAGEN_API_KEY_FILE, 'r') as f:
-                return f.read().strip()
-        except:
-            return None
-    return None
-
-
-def save_imagen_api_key(api_key: str):
-    """Save Nano Banana API key to file."""
-    with open(IMAGEN_API_KEY_FILE, 'w') as f:
-        f.write(api_key)
-
-
-def clear_imagen_api_key():
-    """Remove saved Nano Banana API key file."""
-    if IMAGEN_API_KEY_FILE.exists():
-        IMAGEN_API_KEY_FILE.unlink()
+# Imagen now uses the same Vision API credentials - no separate functions needed
 
 
 def init_session_state():
@@ -461,11 +441,9 @@ def init_session_state():
         st.session_state.gemini_api_key = saved_gemini_key
         st.session_state.gemini_enabled = saved_gemini_key is not None
 
-    # Initialize Nano Banana API key
-    if 'imagen_api_key' not in st.session_state:
-        saved_imagen_key = load_imagen_api_key()
-        st.session_state.imagen_api_key = saved_imagen_key
-        st.session_state.imagen_enabled = saved_imagen_key is not None
+    # Imagen uses Vision API credentials - enabled if Vision credentials are loaded
+    if 'imagen_enabled' not in st.session_state:
+        st.session_state.imagen_enabled = st.session_state.vision_credentials is not None
 
     if 'generated_images' not in st.session_state:
         st.session_state.generated_images = []
@@ -1808,16 +1786,16 @@ def render_post_analysis(df: pd.DataFrame):
                                     with st.spinner("🍌 Generating with Nano Banana... (10-15 seconds)"):
                                         try:
                                             # Validate API key exists
-                                            if not st.session_state.imagen_api_key:
-                                                st.error("❌ No Nano Banana API key found. Please configure it in Settings.")
+                                            if not st.session_state.vision_credentials:
+                                                st.error("❌ No Vision API credentials found. Please configure them in Settings.")
                                             else:
                                                 # Create output directory
                                                 GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
 
-                                                # Generate image
+                                                # Generate image using Vision API credentials
                                                 result = generate_image_with_imagen(
                                                     prompt=prompt_data['prompt'],
-                                                    api_key=st.session_state.imagen_api_key,
+                                                    credentials_dict=st.session_state.vision_credentials,
                                                     number_of_images=1,
                                                     aspect_ratio=st.session_state[ar_key]
                                                 )
@@ -2011,13 +1989,13 @@ def render_post_analysis(df: pd.DataFrame):
                     if generate_custom_clicked:
                         with st.spinner("🍌 Generating with Nano Banana... (10-15 seconds)"):
                             try:
-                                if not st.session_state.imagen_api_key:
-                                    st.error("❌ No Nano Banana API key found. Please configure it in Settings.")
+                                if not st.session_state.vision_credentials:
+                                    st.error("❌ No Vision API credentials found. Please configure them in Settings.")
                                 else:
                                     GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
                                     result = generate_image_with_imagen(
                                         prompt=custom_prompt,
-                                        api_key=st.session_state.imagen_api_key,
+                                        credentials_dict=st.session_state.vision_credentials,
                                         number_of_images=1,
                                         aspect_ratio=st.session_state.custom_aspect_ratio
                                     )
@@ -2337,8 +2315,8 @@ def render_post_analysis(df: pd.DataFrame):
             st.markdown("---")
             st.info("**Note:** API key is saved locally and will persist until cleared.")
 
-        # --- IMAGEN API SETTINGS SECTION ---
-        with st.expander("🎨 Nano Banana API Settings (Google AI Studio)", expanded=False):
+        # --- VERTEX AI IMAGEN SETTINGS SECTION ---
+        with st.expander("🎨 Vertex AI Imagen Settings (Uses Vision API Credentials)", expanded=False):
             st.markdown("Configure your Google AI Studio API key to enable AI-powered image generation using Imagen.")
             st.markdown("---")
 

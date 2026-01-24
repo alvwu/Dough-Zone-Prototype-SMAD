@@ -1,6 +1,6 @@
 """
-Google AI Studio Nano Banana API Integration Module
-Handles image generation using Google AI Studio's Nano Banana (Gemini Image) API.
+Google Vertex AI Imagen Integration Module
+Handles image generation using Google Cloud Vertex AI Imagen (reuses Vision API credentials).
 """
 
 import base64
@@ -10,131 +10,162 @@ from typing import Optional, Dict, Any
 import time
 
 
-def validate_imagen_credentials(api_key: str) -> bool:
+def validate_imagen_credentials(credentials_dict: dict) -> bool:
     """
-    Validate Google AI Studio API key by checking format.
+    Validate Vertex AI credentials by checking required fields.
 
     Args:
-        api_key: Google AI Studio API key
+        credentials_dict: Parsed JSON credentials dictionary
 
     Returns:
-        True if valid format, False otherwise
+        True if valid, False otherwise
     """
     try:
-        # Google AI Studio keys typically start with "AIza"
-        if not api_key or len(api_key) < 20:
-            return False
+        required_fields = ['private_key', 'client_email', 'project_id']
+        for field in required_fields:
+            if field not in credentials_dict:
+                return False
         return True
     except Exception:
         return False
 
 
+def get_access_token_for_imagen(credentials_dict: dict) -> str:
+    """
+    Get an access token from service account credentials for Vertex AI.
+
+    Args:
+        credentials_dict: The parsed JSON credentials dictionary
+
+    Returns:
+        Access token string
+    """
+    import jwt
+    from datetime import datetime, timedelta
+    import requests
+
+    # Extract required fields
+    private_key = credentials_dict['private_key']
+    client_email = credentials_dict['client_email']
+    token_uri = credentials_dict.get('token_uri', 'https://oauth2.googleapis.com/token')
+
+    # Create JWT
+    now = datetime.utcnow()
+    payload = {
+        'iss': client_email,
+        'sub': client_email,
+        'aud': token_uri,
+        'iat': now,
+        'exp': now + timedelta(hours=1),
+        'scope': 'https://www.googleapis.com/auth/cloud-platform'
+    }
+
+    # Sign JWT with private key
+    signed_jwt = jwt.encode(payload, private_key, algorithm='RS256')
+
+    # Exchange JWT for access token
+    response = requests.post(
+        token_uri,
+        data={
+            'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+            'assertion': signed_jwt
+        }
+    )
+
+    if response.status_code != 200:
+        raise Exception(f"Failed to get access token: {response.text}")
+
+    return response.json()['access_token']
+
+
 def generate_image_with_imagen(
     prompt: str,
-    api_key: str,
+    credentials_dict: dict,
     number_of_images: int = 1,
     aspect_ratio: str = "1:1",
     safety_filter_level: str = "block_some",
     person_generation: str = "allow_adult"
 ) -> Dict[str, Any]:
     """
-    Generate images using Google AI Studio Nano Banana API (Gemini Image).
+    Generate images using Google Vertex AI Imagen.
 
     Args:
         prompt: The text prompt for image generation
-        api_key: Google AI Studio API key
+        credentials_dict: Google Cloud credentials dictionary (same as Vision API)
         number_of_images: Number of images to generate (1-4)
         aspect_ratio: Image aspect ratio ("1:1", "9:16", "16:9", "4:3", "3:4")
-        safety_filter_level: Safety filter level (kept for compatibility, not used in Gemini API)
-        person_generation: Person generation policy (kept for compatibility, not used in Gemini API)
+        safety_filter_level: Safety filter level ("block_most", "block_some", "block_few", "block_fewest")
+        person_generation: Person generation policy ("allow_adult", "allow_all", "dont_allow")
 
     Returns:
         Dictionary containing generated images (as base64) and metadata
     """
     import requests
 
-    print(f"[DEBUG] Starting Nano Banana image generation for prompt: {prompt[:50]}...")
+    print(f"[DEBUG] Starting Vertex AI Imagen generation for prompt: {prompt[:50]}...")
     print(f"[DEBUG] Aspect ratio: {aspect_ratio}")
 
     try:
-        # Use Gemini 2.5 Flash Image (Nano Banana) for faster generation
-        # For higher quality, use "gemini-3-pro-image-preview"
-        model = "gemini-2.5-flash-image"
+        # Get access token
+        print("[DEBUG] Getting access token...")
+        access_token = get_access_token_for_imagen(credentials_dict)
+        print("[DEBUG] Access token obtained successfully")
 
-        # Google AI Studio Nano Banana endpoint
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        # Extract project ID
+        project_id = credentials_dict['project_id']
+        print(f"[DEBUG] Using project ID: {project_id}")
+
+        # Vertex AI Imagen endpoint
+        location = "us-central1"  # Imagen is available in us-central1
+        url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/imagegeneration@006:predict"
         print(f"[DEBUG] API endpoint: {url}")
 
-        # Add aspect ratio guidance to the prompt
-        aspect_ratio_prompts = {
-            "1:1": "square format, 1:1 aspect ratio",
-            "9:16": "vertical format, 9:16 aspect ratio for mobile/stories",
-            "16:9": "horizontal widescreen format, 16:9 aspect ratio",
-            "4:3": "horizontal format, 4:3 aspect ratio",
-            "3:4": "vertical format, 3:4 aspect ratio"
-        }
-
-        # Enhance prompt with aspect ratio guidance
-        enhanced_prompt = f"{prompt}. Format: {aspect_ratio_prompts.get(aspect_ratio, 'square format')}"
-
-        # Request payload for Google AI Studio Nano Banana
+        # Request payload
         payload = {
-            "contents": [{
-                "parts": [
-                    {"text": enhanced_prompt}
-                ]
-            }]
+            "instances": [
+                {
+                    "prompt": prompt
+                }
+            ],
+            "parameters": {
+                "sampleCount": min(number_of_images, 4),  # Max 4 images
+                "aspectRatio": aspect_ratio,
+                "safetyFilterLevel": safety_filter_level,
+                "personGeneration": person_generation
+            }
         }
         print(f"[DEBUG] Request payload: {json.dumps(payload, indent=2)}")
 
-        # Make API request with API key in header
+        # Make API request
         headers = {
-            'x-goog-api-key': api_key,
+            'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json'
         }
 
-        print("[DEBUG] Sending request to Nano Banana API...")
+        print("[DEBUG] Sending request to Vertex AI Imagen API...")
+        response = requests.post(url, json=payload, headers=headers, timeout=120)
+        print(f"[DEBUG] Response status code: {response.status_code}")
 
-        # Generate multiple images if requested
+        if response.status_code != 200:
+            error_detail = response.json() if response.content else response.text
+            print(f"[DEBUG] Error response: {error_detail}")
+            raise Exception(f"Vertex AI Imagen API error ({response.status_code}): {error_detail}")
+
+        result = response.json()
+        print(f"[DEBUG] Response keys: {result.keys()}")
+
+        # Extract images from response
         images = []
-        for i in range(min(number_of_images, 4)):
-            print(f"[DEBUG] Generating image {i+1}/{min(number_of_images, 4)}...")
-            response = requests.post(url, json=payload, headers=headers, timeout=120)
-            print(f"[DEBUG] Response status code: {response.status_code}")
-
-            if response.status_code != 200:
-                error_detail = response.json() if response.content else response.text
-                print(f"[DEBUG] Error response: {error_detail}")
-                raise Exception(f"Nano Banana API error ({response.status_code}): {error_detail}")
-
-            result = response.json()
-            print(f"[DEBUG] Response keys: {result.keys()}")
-
-            # Extract images from response
-            if 'candidates' in result and len(result['candidates']) > 0:
-                candidate = result['candidates'][0]
-                print(f"[DEBUG] Candidate keys: {candidate.keys()}")
-
-                if 'content' in candidate and 'parts' in candidate['content']:
-                    parts = candidate['content']['parts']
-                    print(f"[DEBUG] Found {len(parts)} parts in response")
-
-                    for part_idx, part in enumerate(parts):
-                        print(f"[DEBUG] Part {part_idx} keys: {part.keys()}")
-                        # Look for inline_data with image
-                        if 'inline_data' in part or 'inlineData' in part:
-                            inline_data = part.get('inline_data') or part.get('inlineData')
-                            if 'data' in inline_data:
-                                images.append(inline_data['data'])
-                                print(f"[DEBUG] Added image {len(images)} (length: {len(inline_data['data'])} chars)")
-                            elif 'image' in inline_data:
-                                images.append(inline_data['image'])
-                                print(f"[DEBUG] Added image {len(images)} from 'image' field")
-            else:
-                print(f"[DEBUG] No 'candidates' key in response. Response: {json.dumps(result, indent=2)}")
-
-        if not images:
-            raise Exception("No images were generated by the Nano Banana API")
+        if 'predictions' in result:
+            print(f"[DEBUG] Found {len(result['predictions'])} predictions")
+            for i, prediction in enumerate(result['predictions']):
+                print(f"[DEBUG] Prediction {i} keys: {prediction.keys()}")
+                # Imagen returns base64-encoded images in 'bytesBase64Encoded' field
+                if 'bytesBase64Encoded' in prediction:
+                    images.append(prediction['bytesBase64Encoded'])
+                    print(f"[DEBUG] Added image {i} (length: {len(prediction['bytesBase64Encoded'])} chars)")
+        else:
+            print(f"[DEBUG] No 'predictions' key in response. Response: {json.dumps(result, indent=2)}")
 
         print(f"[DEBUG] Successfully extracted {len(images)} images")
         return {
@@ -177,7 +208,7 @@ def save_generated_image(image_base64: str, output_path: str) -> str:
 
 def estimate_imagen_cost(number_of_images: int) -> float:
     """
-    Estimate the cost of generating images with Google AI Studio Nano Banana.
+    Estimate the cost of generating images with Vertex AI Imagen.
 
     Args:
         number_of_images: Number of images to generate
@@ -185,42 +216,43 @@ def estimate_imagen_cost(number_of_images: int) -> float:
     Returns:
         Estimated cost in USD
     """
-    # Google AI Studio Nano Banana pricing:
-    # Free tier: First 50 images per day free
-    # After free tier: $0.04 per image for Gemini 2.5 Flash Image
-    # Gemini 3 Pro Image Preview: $0.08 per image
-    COST_PER_IMAGE = 0.04
+    # Vertex AI Imagen pricing:
+    # - $0.020 per image for standard resolution (1024x1024)
+    COST_PER_IMAGE = 0.020
 
     return number_of_images * COST_PER_IMAGE
 
 
-def test_imagen_connection(api_key: str) -> bool:
+def test_imagen_connection(credentials_dict: dict) -> bool:
     """
-    Test Google AI Studio Nano Banana API connection.
+    Test Vertex AI Imagen API connection.
 
     Args:
-        api_key: Google AI Studio API key
+        credentials_dict: Google Cloud credentials dictionary
 
     Returns:
         True if connection successful, False otherwise
     """
     try:
-        # Validate API key format
-        if not validate_imagen_credentials(api_key):
-            return False
+        # Try to get access token
+        access_token = get_access_token_for_imagen(credentials_dict)
+
+        # Verify project exists and we can access Vertex AI
+        project_id = credentials_dict['project_id']
+        location = "us-central1"
 
         import requests
 
-        # Test with a simple request to the models endpoint
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image"
+        # Simple request to verify access
+        url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/imagegeneration@006"
 
         headers = {
-            'x-goog-api-key': api_key
+            'Authorization': f'Bearer {access_token}'
         }
 
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers)
 
-        # 200 means success, 403 might mean API not enabled but key is valid
+        # 200 or 403 both mean credentials work (403 might mean API not enabled)
         return response.status_code in [200, 403]
 
     except Exception:
