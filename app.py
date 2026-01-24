@@ -415,7 +415,7 @@ def clear_gemini_key():
 
 
 def load_imagen_api_key():
-    """Load Imagen API key from file if exists."""
+    """Load Nano Banana API key from file if exists."""
     if IMAGEN_API_KEY_FILE.exists():
         try:
             with open(IMAGEN_API_KEY_FILE, 'r') as f:
@@ -426,13 +426,13 @@ def load_imagen_api_key():
 
 
 def save_imagen_api_key(api_key: str):
-    """Save Imagen API key to file."""
+    """Save Nano Banana API key to file."""
     with open(IMAGEN_API_KEY_FILE, 'w') as f:
         f.write(api_key)
 
 
 def clear_imagen_api_key():
-    """Remove saved Imagen API key file."""
+    """Remove saved Nano Banana API key file."""
     if IMAGEN_API_KEY_FILE.exists():
         IMAGEN_API_KEY_FILE.unlink()
 
@@ -461,7 +461,7 @@ def init_session_state():
         st.session_state.gemini_api_key = saved_gemini_key
         st.session_state.gemini_enabled = saved_gemini_key is not None
 
-    # Initialize Imagen API key
+    # Initialize Nano Banana API key
     if 'imagen_api_key' not in st.session_state:
         saved_imagen_key = load_imagen_api_key()
         st.session_state.imagen_api_key = saved_imagen_key
@@ -1786,7 +1786,7 @@ def render_post_analysis(df: pd.DataFrame):
                                 st.caption(f"**Style:** {prompt_data['style']}")
                                 st.caption("**Tools:** Midjourney, DALL-E 3, Stable Diffusion, Runway ML")
 
-                            # Imagen 2 generation option (only for images)
+                            # Nano Banana generation option (only for images)
                             if prompt_data['type'] == 'Image' and st.session_state.imagen_enabled:
                                 st.markdown("---")
                                 
@@ -1827,7 +1827,7 @@ def render_post_analysis(df: pd.DataFrame):
 
                                     with col_gen:
                                         generate_clicked = st.button(
-                                            f"🎨 Generate with Imagen 2", 
+                                            f"🎨 Generate with Nano Banana", 
                                             key=f"gen_imagen_{idx}", 
                                             use_container_width=True, 
                                             type="primary"
@@ -1838,11 +1838,11 @@ def render_post_analysis(df: pd.DataFrame):
                                         generation_success = False
                                         generation_error = None
                                         
-                                        with st.spinner("🎨 Generating image with Imagen 2... This may take 10-15 seconds."):
+                                        with st.spinner("🎨 Generating image with Nano Banana... This may take 10-15 seconds."):
                                             try:
                                                 # Validate API key exists
                                                 if not st.session_state.imagen_api_key:
-                                                    st.error("❌ No Imagen API key found. Please configure it in Settings.")
+                                                    st.error("❌ No Nano Banana API key found. Please configure it in Settings.")
                                                 else:
                                                     # Create output directory
                                                     GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
@@ -1886,9 +1886,9 @@ def render_post_analysis(df: pd.DataFrame):
                                             if "quota" in generation_error.lower() or "billing" in generation_error.lower():
                                                 st.warning("💡 Make sure billing is enabled and you have remaining credits in your Google Cloud account.")
                                             elif "permission" in generation_error.lower() or "403" in generation_error:
-                                                st.warning("💡 Check that your API key is valid and Imagen API is enabled in Google AI Studio.")
+                                                st.warning("💡 Check that your API key is valid and Nano Banana API is enabled in Google AI Studio.")
                             elif prompt_data['type'] == 'Image' and not st.session_state.imagen_enabled:
-                                st.info("💡 Configure Imagen 2 in API Settings to generate images directly")
+                                st.info("💡 Configure Nano Banana in API Settings to generate images directly")
 
         else:  # Custom Parameters mode
             st.info("Customize your AI prompt generation parameters")
@@ -1999,7 +1999,7 @@ def render_post_analysis(df: pd.DataFrame):
                     st.code(custom_prompt, language=None)
                     st.caption("**Recommended Tools:** Midjourney, DALL-E 3, Stable Diffusion, Leonardo.AI")
 
-                # Imagen 2 generation option for custom prompts (only for images)
+                # Nano Banana generation option for custom prompts (only for images)
                 if content_type == 'Image' and st.session_state.imagen_enabled:
                     st.markdown("---")
                     
@@ -2034,7 +2034,7 @@ def render_post_analysis(df: pd.DataFrame):
 
                         with col_gen_custom:
                             generate_custom_clicked = st.button(
-                                "🎨 Generate with Imagen 2", 
+                                "🎨 Generate with Nano Banana", 
                                 key="gen_imagen_custom", 
                                 use_container_width=True, 
                                 type="primary"
@@ -2045,10 +2045,10 @@ def render_post_analysis(df: pd.DataFrame):
                             generation_success = False
                             generation_error = None
                             
-                            with st.spinner("🎨 Generating image with Imagen 2... This may take 10-15 seconds."):
+                            with st.spinner("🎨 Generating image with Nano Banana... This may take 10-15 seconds."):
                                 try:
                                     if not st.session_state.imagen_api_key:
-                                        st.error("❌ No Imagen API key found. Please configure it in Settings.")
+                                        st.error("❌ No Nano Banana API key found. Please configure it in Settings.")
                                     else:
                                         GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
                                         result = generate_image_with_imagen(
@@ -2084,9 +2084,9 @@ def render_post_analysis(df: pd.DataFrame):
                                 if "quota" in generation_error.lower() or "billing" in generation_error.lower():
                                     st.warning("💡 Make sure billing is enabled and you have remaining credits.")
                                 elif "permission" in generation_error.lower() or "403" in generation_error:
-                                    st.warning("💡 Check that your API key is valid and Imagen API is enabled in Google AI Studio.")
+                                    st.warning("💡 Check that your API key is valid and Nano Banana API is enabled in Google AI Studio.")
                 elif content_type == 'Image' and not st.session_state.imagen_enabled:
-                    st.info("💡 Configure Imagen 2 in API Settings to generate images directly")
+                    st.info("💡 Configure Nano Banana in API Settings to generate images directly")
 
         st.markdown("---")
 
@@ -2101,7 +2101,7 @@ def render_post_analysis(df: pd.DataFrame):
             - Iterate on prompts that generate high-engagement content
 
             **Popular AI Tools:**
-            - **Images:** Google Imagen 2 (integrated!), Midjourney, DALL-E 3, Stable Diffusion, Leonardo.AI
+            - **Images:** Google Nano Banana (integrated!), Midjourney, DALL-E 3, Stable Diffusion, Leonardo.AI
             - **Videos:** Runway ML, Pika Labs, Synthesia, D-ID
             - **Enhancement:** Topaz AI, Magnific AI, Krea.ai
 
@@ -2363,7 +2363,7 @@ def render_post_analysis(df: pd.DataFrame):
             st.info("**Note:** API key is saved locally and will persist until cleared.")
 
         # --- IMAGEN API SETTINGS SECTION ---
-        with st.expander("🎨 Imagen API Settings (Google AI Studio)", expanded=False):
+        with st.expander("🎨 Nano Banana API Settings (Google AI Studio)", expanded=False):
             st.markdown("Configure your Google AI Studio API key to enable AI-powered image generation using Imagen.")
             st.markdown("---")
 
@@ -2392,7 +2392,7 @@ def render_post_analysis(df: pd.DataFrame):
                                     if is_valid:
                                         st.success("✅ API key saved and validated!")
                                     else:
-                                        st.warning("⚠️ API key saved but validation failed. Make sure Imagen API is enabled.")
+                                        st.warning("⚠️ API key saved but validation failed. Make sure Nano Banana API is enabled.")
                                         st.session_state.imagen_enabled = True  # Allow usage anyway
                                 except Exception as e:
                                     st.session_state.imagen_enabled = True

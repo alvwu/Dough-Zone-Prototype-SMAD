@@ -51,15 +51,15 @@ AI-powered content prompt generation with two modes:
 - **Custom Parameters**:
   - Manually define subject, mood, colors, lighting
   - Generate tailored prompts for specific needs
-- **Imagen Integration**:
-  - Generate images directly from prompts using Google AI Studio Imagen API
+- **Nano Banana Integration**:
+  - Generate images directly from prompts using Google AI Studio Nano Banana API
   - Multiple aspect ratio options (1:1, 9:16, 16:9, 4:3, 3:4)
   - Real-time image generation with cost estimates
 
 #### ⚙️ API Settings
 - Google Vision API configuration (Service Account JSON)
 - OpenRouter API setup for Gemini 2.0 Flash
-- Google AI Studio Imagen API configuration for image generation (API key)
+- Google AI Studio Nano Banana API configuration for image generation (API key)
 - Batch image analysis
 - API connection testing
 
@@ -95,7 +95,7 @@ Social Media Dashboard/
 ├── database.py                 # SQLite database operations
 ├── data_processing.py          # Feature engineering and data analysis
 ├── vision_api.py               # Google Cloud Vision API integration
-├── imagen_api.py               # Google AI Studio Imagen API integration
+├── imagen_api.py               # Google AI Studio Nano Banana API integration
 ├── requirements.txt            # Python dependencies
 ├── data/                       # Folder for CSV data files
 │   └── insta_dummy_data(in).csv # Sample data
@@ -150,7 +150,7 @@ The dashboard expects CSV data with the following columns:
 - Pay-as-you-go pricing, very affordable
 - Enables AI-powered prompt generation based on your top-performing content
 
-### Google AI Studio Imagen API (for AI Image Generation)
+### Google AI Studio Nano Banana API (for AI Image Generation)
 
 1. Go to [Google AI Studio](https://aistudio.google.com/)
 2. Sign in with your Google account
@@ -158,7 +158,7 @@ The dashboard expects CSV data with the following columns:
 4. Click **"Create API key"** button
 5. Select an existing Google Cloud project or create a new one
 6. Copy the API key (starts with `AIza`)
-7. Enter it in the dashboard's **API Settings** tab under "Imagen API Settings"
+7. Enter it in the dashboard's **API Settings** tab under "Nano Banana API Settings"
 8. Click **Save API Key** and **Test Connection**
 
 **Notes:**
@@ -203,7 +203,7 @@ The app automatically loads CSV files from the `data/` folder:
    - **Custom Parameters**: Create custom prompts with specific parameters
 4. Configure content type (Image/Video/Both) and style preference
 5. Click **Generate Prompts**
-6. Optionally, generate images directly using **Google AI Studio Imagen** (requires Imagen API key)
+6. Optionally, generate images directly using **Google AI Studio Nano Banana** (requires Nano Banana API key)
 
 ## Dependencies
 
@@ -219,20 +219,20 @@ The app automatically loads CSV files from the `data/` folder:
 - PyJWT >= 2.8.0
 - cryptography >= 41.0.0
 - openai >= 1.0.0 (for OpenRouter integration)
-- google-generativeai >= 0.3.0 (for Google AI Studio Imagen)
+- google-generativeai >= 0.3.0 (for Google AI Studio Nano Banana)
 - Pillow >= 10.0.0
 
 ## Cost Information
 
 ### Free Tier
 - **Google Vision API**: 1,000 requests/month free
-- **Google AI Studio Imagen**: 50 images per day free
+- **Google AI Studio Nano Banana**: 50 images per day free
 - **Google Cloud**: $300 in free credits for new accounts (for Vision API)
 - **OpenRouter**: Pay-as-you-go, very low cost per request
 
 ### Paid Usage
 - **Gemini 2.0 Flash** (via OpenRouter): ~$0.0001 per prompt generation
-- **Google AI Studio Imagen** (after free tier): $0.04 per image
+- **Google AI Studio Nano Banana** (after free tier): $0.04 per image
 - **Vision API** (after free tier): ~$1.50 per 1,000 images
 
 ## Troubleshooting
@@ -246,10 +246,10 @@ The app automatically loads CSV files from the `data/` folder:
 - Make sure Cloud Vision API is enabled in your Google Cloud project
 - Check that billing is enabled (required even for free tier)
 
-### Google AI Studio Imagen not generating images
+### Google AI Studio Nano Banana not generating images
 - Verify your API key is correct (starts with 'AIza')
 - Make sure you haven't exceeded the daily free tier limit (50 images/day)
-- Check that Imagen API is enabled in your Google Cloud project
+- Check that Nano Banana API is enabled in your Google Cloud project
 - If using paid tier, ensure billing is enabled
 - Check terminal output for detailed error messages
 
