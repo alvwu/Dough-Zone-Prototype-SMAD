@@ -2284,7 +2284,7 @@ def render_post_analysis(df: pd.DataFrame):
             col_save_gemini, col_test_gemini = st.columns(2)
 
             with col_save_gemini:
-                if st.button("💾 Save API Key", use_container_width=True):
+                if st.button("💾 Save API Key", use_container_width=True, key="save_openrouter_key"):
                     if gemini_key_input and len(gemini_key_input) > 20:
                         st.session_state.gemini_api_key = gemini_key_input
                         save_gemini_key(gemini_key_input)
@@ -2295,7 +2295,7 @@ def render_post_analysis(df: pd.DataFrame):
                         st.error("Please enter a valid API key")
 
             with col_test_gemini:
-                if st.button("🧪 Test Connection", use_container_width=True):
+                if st.button("🧪 Test Connection", use_container_width=True, key="test_openrouter_connection"):
                     if st.session_state.gemini_api_key:
                         with st.spinner("Testing OpenRouter API connection..."):
                             try:
@@ -2335,7 +2335,7 @@ def render_post_analysis(df: pd.DataFrame):
                         st.warning("⚠️ API key saved but not tested")
 
                 with col_clear:
-                    if st.button("🗑️ Clear API Key", use_container_width=True):
+                    if st.button("🗑️ Clear API Key", use_container_width=True, key="clear_openrouter_key"):
                         st.session_state.gemini_api_key = None
                         st.session_state.gemini_enabled = False
                         clear_gemini_key()
@@ -2380,7 +2380,7 @@ def render_post_analysis(df: pd.DataFrame):
 
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("💾 Save API Key", use_container_width=True, type="primary"):
+                if st.button("💾 Save API Key", use_container_width=True, type="primary", key="save_nanobanana_key"):
                     if api_key_input:
                         if validate_imagen_credentials(api_key_input):
                             st.session_state.imagen_api_key = api_key_input
@@ -2404,7 +2404,7 @@ def render_post_analysis(df: pd.DataFrame):
                         st.error("❌ Please enter an API key.")
 
             with col2:
-                if st.button("🧪 Test Connection", use_container_width=True):
+                if st.button("🧪 Test Connection", use_container_width=True, key="test_nanobanana_connection"):
                     if api_key_input:
                         with st.spinner("Testing connection..."):
                             try:
@@ -2430,7 +2430,7 @@ def render_post_analysis(df: pd.DataFrame):
                     else:
                         st.warning("⚠️ API key loaded but not validated")
                 with col2:
-                    if st.button("🗑️ Clear API Key", use_container_width=True):
+                    if st.button("🗑️ Clear API Key", use_container_width=True, key="clear_nanobanana_key"):
                         st.session_state.imagen_api_key = None
                         st.session_state.imagen_enabled = False
                         clear_imagen_api_key()
