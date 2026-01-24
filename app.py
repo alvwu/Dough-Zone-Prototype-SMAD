@@ -509,7 +509,7 @@ def render_sidebar():
     # Navigation - 4 pages now
     page = st.sidebar.radio(
         "Navigation",
-        ["Overview", "Engagement Analysis", "Time Analysis", "Post Analysis"]
+        ["Overview", "Post Analysis"]
     )
 
     st.sidebar.markdown("---")
@@ -533,9 +533,6 @@ def render_sidebar():
 
 def render_overview(df: pd.DataFrame):
     """Render the overview page."""
-    st.title("📊 Social Media Analytics Overview")
-    st.markdown("---")
-
     if len(df) == 0:
         st.warning("No data available. Please check that the CSV file exists.")
         return
@@ -675,9 +672,6 @@ def render_overview(df: pd.DataFrame):
 
 def render_engagement_analysis(df: pd.DataFrame):
     """Render the engagement analysis page."""
-    st.title("💬 Engagement Analysis")
-    st.markdown("---")
-
     if len(df) == 0:
         st.warning("No data available.")
         return
@@ -825,9 +819,6 @@ def render_engagement_analysis(df: pd.DataFrame):
 
 def render_time_analysis(df: pd.DataFrame):
     """Render the time analysis page."""
-    st.title("⏰ Time-Based Analysis")
-    st.markdown("---")
-
     if len(df) == 0:
         st.warning("No data available.")
         return
@@ -2409,11 +2400,23 @@ def main():
 
     # Render selected page
     if page == "Overview":
-        render_overview(df)
-    elif page == "Engagement Analysis":
-        render_engagement_analysis(df)
-    elif page == "Time Analysis":
-        render_time_analysis(df)
+        # Overview page with 3 tabs
+        st.title("📊 Social Media Analytics Dashboard")
+        st.markdown("---")
+
+        tab_overview, tab_engagement, tab_time = st.tabs(
+            ["📊 Overview", "💬 Engagement Analysis", "⏰ Time Analysis"]
+        )
+
+        with tab_overview:
+            render_overview(df)
+
+        with tab_engagement:
+            render_engagement_analysis(df)
+
+        with tab_time:
+            render_time_analysis(df)
+
     elif page == "Post Analysis":
         render_post_analysis(df)
 
