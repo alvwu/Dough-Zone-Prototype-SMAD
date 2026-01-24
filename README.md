@@ -51,15 +51,15 @@ AI-powered content prompt generation with two modes:
 - **Custom Parameters**:
   - Manually define subject, mood, colors, lighting
   - Generate tailored prompts for specific needs
-- **Imagen 2 Integration**:
-  - Generate images directly from prompts using Google Cloud Imagen 2
+- **Imagen Integration**:
+  - Generate images directly from prompts using Google AI Studio Imagen API
   - Multiple aspect ratio options (1:1, 9:16, 16:9, 4:3, 3:4)
   - Real-time image generation with cost estimates
 
 #### ⚙️ API Settings
 - Google Vision API configuration (Service Account JSON)
 - OpenRouter API setup for Gemini 2.0 Flash
-- Imagen 2 API configuration for image generation
+- Google AI Studio Imagen API configuration for image generation (API key)
 - Batch image analysis
 - API connection testing
 
@@ -95,7 +95,7 @@ Social Media Dashboard/
 ├── database.py                 # SQLite database operations
 ├── data_processing.py          # Feature engineering and data analysis
 ├── vision_api.py               # Google Cloud Vision API integration
-├── imagen_api.py               # Google Cloud Imagen 2 API integration
+├── imagen_api.py               # Google AI Studio Imagen API integration
 ├── requirements.txt            # Python dependencies
 ├── data/                       # Folder for CSV data files
 │   └── insta_dummy_data(in).csv # Sample data
@@ -150,22 +150,22 @@ The dashboard expects CSV data with the following columns:
 - Pay-as-you-go pricing, very affordable
 - Enables AI-powered prompt generation based on your top-performing content
 
-### Imagen 2 API (for AI Image Generation)
+### Google AI Studio Imagen API (for AI Image Generation)
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create or select a project
-3. Enable the **Vertex AI API**
-4. Enable **Imagen API** in Vertex AI
-5. Set up billing (new accounts get $300 free credits)
-6. Create a service account with **Vertex AI User** role
-7. Download the JSON key file
-8. Upload it in the dashboard's **API Settings** tab under "Imagen 2 API Settings"
-
-**Alternatively:** If you already configured Google Vision API, you can reuse those credentials by clicking **"Reuse Vision API Credentials"**
+1. Go to [Google AI Studio](https://aistudio.google.com/)
+2. Sign in with your Google account
+3. Click on **"Get API key"** in the left sidebar
+4. Click **"Create API key"** button
+5. Select an existing Google Cloud project or create a new one
+6. Copy the API key (starts with `AIza`)
+7. Enter it in the dashboard's **API Settings** tab under "Imagen API Settings"
+8. Click **Save API Key** and **Test Connection**
 
 **Notes:**
-- New Google Cloud accounts get $300 in free credits
-- Imagen 2 costs approximately $0.020 per image at standard resolution
+- Free tier: First 50 images per day are free
+- After free tier: $0.04 per image (significantly cheaper than Vertex AI)
+- No credit card required for free tier
+- API key is simpler to use than Service Account credentials
 - Supports multiple aspect ratios (1:1, 9:16, 16:9, 4:3, 3:4)
 - Images are saved to a local `generated_images/` folder
 
@@ -203,7 +203,7 @@ The app automatically loads CSV files from the `data/` folder:
    - **Custom Parameters**: Create custom prompts with specific parameters
 4. Configure content type (Image/Video/Both) and style preference
 5. Click **Generate Prompts**
-6. Optionally, generate images directly using **Imagen 2** (requires Imagen API setup)
+6. Optionally, generate images directly using **Google AI Studio Imagen** (requires Imagen API key)
 
 ## Dependencies
 
@@ -219,19 +219,20 @@ The app automatically loads CSV files from the `data/` folder:
 - PyJWT >= 2.8.0
 - cryptography >= 41.0.0
 - openai >= 1.0.0 (for OpenRouter integration)
-- google-cloud-aiplatform >= 1.38.0 (for Imagen 2)
+- google-generativeai >= 0.3.0 (for Google AI Studio Imagen)
 - Pillow >= 10.0.0
 
 ## Cost Information
 
 ### Free Tier
 - **Google Vision API**: 1,000 requests/month free
-- **Google Cloud**: $300 in free credits for new accounts
+- **Google AI Studio Imagen**: 50 images per day free
+- **Google Cloud**: $300 in free credits for new accounts (for Vision API)
 - **OpenRouter**: Pay-as-you-go, very low cost per request
 
 ### Paid Usage
 - **Gemini 2.0 Flash** (via OpenRouter): ~$0.0001 per prompt generation
-- **Imagen 2**: ~$0.020 per image at standard resolution
+- **Google AI Studio Imagen** (after free tier): $0.04 per image
 - **Vision API** (after free tier): ~$1.50 per 1,000 images
 
 ## Troubleshooting
@@ -245,10 +246,11 @@ The app automatically loads CSV files from the `data/` folder:
 - Make sure Cloud Vision API is enabled in your Google Cloud project
 - Check that billing is enabled (required even for free tier)
 
-### Imagen 2 not generating images
-- Verify Vertex AI API is enabled
-- Check that billing is enabled in your Google Cloud project
-- Ensure your service account has "Vertex AI User" permissions
+### Google AI Studio Imagen not generating images
+- Verify your API key is correct (starts with 'AIza')
+- Make sure you haven't exceeded the daily free tier limit (50 images/day)
+- Check that Imagen API is enabled in your Google Cloud project
+- If using paid tier, ensure billing is enabled
 - Check terminal output for detailed error messages
 
 ### OpenRouter API not working

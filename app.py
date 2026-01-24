@@ -49,7 +49,7 @@ GENERATED_IMAGES_DIR = Path(__file__).parent / "generated_images"
 CREDENTIALS_FILE = Path(__file__).parent / ".vision_credentials.json"
 VISION_CACHE_FILE = Path(__file__).parent / ".vision_cache.json"
 GEMINI_KEY_FILE = Path(__file__).parent / ".gemini_key.txt"
-IMAGEN_CREDENTIALS_FILE = Path(__file__).parent / ".imagen_credentials.json"
+IMAGEN_API_KEY_FILE = Path(__file__).parent / ".imagen_api_key.txt"
 
 # Warm orange color palette for charts
 CHART_COLORS = {
@@ -414,29 +414,27 @@ def clear_gemini_key():
         GEMINI_KEY_FILE.unlink()
 
 
-def load_imagen_credentials():
-    """Load Imagen credentials from file if exists."""
-    if IMAGEN_CREDENTIALS_FILE.exists():
+def load_imagen_api_key():
+    """Load Imagen API key from file if exists."""
+    if IMAGEN_API_KEY_FILE.exists():
         try:
-            import json
-            with open(IMAGEN_CREDENTIALS_FILE, 'r') as f:
-                return json.load(f)
+            with open(IMAGEN_API_KEY_FILE, 'r') as f:
+                return f.read().strip()
         except:
             return None
     return None
 
 
-def save_imagen_credentials(credentials_dict: dict):
-    """Save Imagen credentials to file."""
-    import json
-    with open(IMAGEN_CREDENTIALS_FILE, 'w') as f:
-        json.dump(credentials_dict, f)
+def save_imagen_api_key(api_key: str):
+    """Save Imagen API key to file."""
+    with open(IMAGEN_API_KEY_FILE, 'w') as f:
+        f.write(api_key)
 
 
-def clear_imagen_credentials():
-    """Remove saved Imagen credentials file."""
-    if IMAGEN_CREDENTIALS_FILE.exists():
-        IMAGEN_CREDENTIALS_FILE.unlink()
+def clear_imagen_api_key():
+    """Remove saved Imagen API key file."""
+    if IMAGEN_API_KEY_FILE.exists():
+        IMAGEN_API_KEY_FILE.unlink()
 
 
 def init_session_state():
@@ -463,11 +461,11 @@ def init_session_state():
         st.session_state.gemini_api_key = saved_gemini_key
         st.session_state.gemini_enabled = saved_gemini_key is not None
 
-    # Initialize Imagen credentials
-    if 'imagen_credentials' not in st.session_state:
-        saved_imagen_creds = load_imagen_credentials()
-        st.session_state.imagen_credentials = saved_imagen_creds
-        st.session_state.imagen_enabled = saved_imagen_creds is not None
+    # Initialize Imagen API key
+    if 'imagen_api_key' not in st.session_state:
+        saved_imagen_key = load_imagen_api_key()
+        st.session_state.imagen_api_key = saved_imagen_key
+        st.session_state.imagen_enabled = saved_imagen_key is not None
 
     if 'generated_images' not in st.session_state:
         st.session_state.generated_images = []
@@ -1842,9 +1840,9 @@ def render_post_analysis(df: pd.DataFrame):
                                         
                                         with st.spinner("🎨 Generating image with Imagen 2... This may take 10-15 seconds."):
                                             try:
-                                                # Validate credentials exist
-                                                if not st.session_state.imagen_credentials:
-                                                    st.error("❌ No Imagen credentials found. Please configure them in Settings.")
+                                                # Validate API key exists
+                                                if not st.session_state.imagen_api_key:
+                                                    st.error("❌ No Imagen API key found. Please configure it in Settings.")
                                                 else:
                                                     # Create output directory
                                                     GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
@@ -1852,7 +1850,7 @@ def render_post_analysis(df: pd.DataFrame):
                                                     # Generate image
                                                     result = generate_image_with_imagen(
                                                         prompt=prompt_data['prompt'],
-                                                        credentials_dict=st.session_state.imagen_credentials,
+                                                        api_key=st.session_state.imagen_api_key,
                                                         number_of_images=1,
                                                         aspect_ratio=st.session_state[ar_key]
                                                     )
@@ -1888,7 +1886,7 @@ def render_post_analysis(df: pd.DataFrame):
                                             if "quota" in generation_error.lower() or "billing" in generation_error.lower():
                                                 st.warning("💡 Make sure billing is enabled and you have remaining credits in your Google Cloud account.")
                                             elif "permission" in generation_error.lower() or "403" in generation_error:
-                                                st.warning("💡 Check that your service account has 'Vertex AI User' role and Imagen API is enabled.")
+                                                st.warning("💡 Check that your API key is valid and Imagen API is enabled in Google AI Studio.")
                             elif prompt_data['type'] == 'Image' and not st.session_state.imagen_enabled:
                                 st.info("💡 Configure Imagen 2 in API Settings to generate images directly")
 
@@ -2049,13 +2047,13 @@ def render_post_analysis(df: pd.DataFrame):
                             
                             with st.spinner("🎨 Generating image with Imagen 2... This may take 10-15 seconds."):
                                 try:
-                                    if not st.session_state.imagen_credentials:
-                                        st.error("❌ No Imagen credentials found. Please configure them in Settings.")
+                                    if not st.session_state.imagen_api_key:
+                                        st.error("❌ No Imagen API key found. Please configure it in Settings.")
                                     else:
                                         GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
                                         result = generate_image_with_imagen(
                                             prompt=custom_prompt,
-                                            credentials_dict=st.session_state.imagen_credentials,
+                                            api_key=st.session_state.imagen_api_key,
                                             number_of_images=1,
                                             aspect_ratio=st.session_state.custom_aspect_ratio
                                         )
@@ -2086,7 +2084,7 @@ def render_post_analysis(df: pd.DataFrame):
                                 if "quota" in generation_error.lower() or "billing" in generation_error.lower():
                                     st.warning("💡 Make sure billing is enabled and you have remaining credits.")
                                 elif "permission" in generation_error.lower() or "403" in generation_error:
-                                    st.warning("💡 Check that your service account has 'Vertex AI User' role.")
+                                    st.warning("💡 Check that your API key is valid and Imagen API is enabled in Google AI Studio.")
                 elif content_type == 'Image' and not st.session_state.imagen_enabled:
                     st.info("💡 Configure Imagen 2 in API Settings to generate images directly")
 
@@ -2107,10 +2105,10 @@ def render_post_analysis(df: pd.DataFrame):
             - **Videos:** Runway ML, Pika Labs, Synthesia, D-ID
             - **Enhancement:** Topaz AI, Magnific AI, Krea.ai
 
-            **Imagen 2 Integration:**
-            - Configure Imagen 2 in API Settings to generate images directly in the dashboard
-            - Uses Google Cloud Vertex AI with $300 free credits for new accounts
-            - Approximately $0.020 per image at standard resolution
+            **Imagen Integration:**
+            - Configure Imagen in API Settings to generate images directly in the dashboard
+            - Uses Google AI Studio API with 50 free images per day
+            - Approximately $0.04 per image after free tier (cheaper than Vertex AI)
             - Supports multiple aspect ratios (1:1, 9:16, 16:9, 4:3, 3:4)
 
             **Pro Tip:** Track which AI-generated content performs best and use those insights to refine future prompts!
@@ -2364,135 +2362,103 @@ def render_post_analysis(df: pd.DataFrame):
             st.markdown("---")
             st.info("**Note:** API key is saved locally and will persist until cleared.")
 
-        # --- IMAGEN 2 API SETTINGS SECTION ---
-        with st.expander("🎨 Imagen 2 API Settings (Google Cloud)", expanded=False):
-            st.markdown("Configure your Google Cloud credentials to enable AI-powered image generation using Imagen 2.")
+        # --- IMAGEN API SETTINGS SECTION ---
+        with st.expander("🎨 Imagen API Settings (Google AI Studio)", expanded=False):
+            st.markdown("Configure your Google AI Studio API key to enable AI-powered image generation using Imagen.")
             st.markdown("---")
 
-            # Option to reuse Vision API credentials
-            if st.session_state.vision_credentials:
-                st.info("💡 You already have Google Cloud credentials configured for Vision API. You can reuse them for Imagen 2!")
+            # API Key input
+            st.markdown("### Enter Your Google AI Studio API Key")
 
-                col_reuse, col_upload = st.columns(2)
-                with col_reuse:
-                    if st.button("♻️ Reuse Vision API Credentials", use_container_width=True, type="primary"):
-                        st.session_state.imagen_credentials = st.session_state.vision_credentials
-                        save_imagen_credentials(st.session_state.vision_credentials)
-                        with st.spinner("Validating Imagen credentials..."):
-                            try:
-                                is_valid = test_imagen_connection(st.session_state.vision_credentials)
-                                st.session_state.imagen_enabled = is_valid
-                                if is_valid:
-                                    st.success("✅ Imagen credentials configured successfully!")
-                                else:
-                                    st.warning("⚠️ Credentials saved. Make sure Vertex AI API is enabled in your Google Cloud project.")
-                                    st.session_state.imagen_enabled = True
-                            except Exception as e:
-                                st.session_state.imagen_enabled = True
-                                st.warning(f"Credentials saved. Validation skipped: {str(e)}")
-                        st.rerun()
-
-                st.markdown("**Or upload different credentials below:**")
-                st.markdown("---")
-
-            # JSON Credentials upload
-            st.markdown("### Upload Service Account JSON")
-            uploaded_imagen_file = st.file_uploader(
-                "Drop your Google Cloud service account JSON file here",
-                type=['json'],
-                help="Upload the JSON key file from your Google Cloud service account with Vertex AI access",
-                key="imagen_credentials_uploader"
+            api_key_input = st.text_input(
+                "API Key",
+                type="password",
+                placeholder="Enter your Google AI Studio API key (starts with 'AIza')",
+                help="Get your API key from Google AI Studio (aistudio.google.com)",
+                key="imagen_api_key_input"
             )
 
-            if uploaded_imagen_file is not None:
-                try:
-                    import json
-                    credentials_content = uploaded_imagen_file.read().decode('utf-8')
-                    credentials_dict = json.loads(credentials_content)
-
-                    # Validate required fields
-                    required_fields = ['private_key', 'client_email', 'project_id']
-                    missing_fields = [f for f in required_fields if f not in credentials_dict]
-
-                    if missing_fields:
-                        st.error(f"Invalid credentials file. Missing fields: {', '.join(missing_fields)}")
-                    else:
-                        st.success(f"Credentials loaded for project: **{credentials_dict.get('project_id')}**")
-                        st.info(f"Service account: {credentials_dict.get('client_email')}")
-
-                        if st.button("💾 Save Imagen Credentials", use_container_width=True):
-                            st.session_state.imagen_credentials = credentials_dict
-                            save_imagen_credentials(credentials_dict)
-                            with st.spinner("Validating Imagen credentials..."):
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("💾 Save API Key", use_container_width=True, type="primary"):
+                    if api_key_input:
+                        if validate_imagen_credentials(api_key_input):
+                            st.session_state.imagen_api_key = api_key_input
+                            save_imagen_api_key(api_key_input)
+                            with st.spinner("Validating API key..."):
                                 try:
-                                    is_valid = test_imagen_connection(credentials_dict)
+                                    is_valid = test_imagen_connection(api_key_input)
                                     st.session_state.imagen_enabled = is_valid
                                     if is_valid:
-                                        st.success("✅ Imagen credentials saved and validated!")
+                                        st.success("✅ API key saved and validated!")
                                     else:
-                                        st.warning("⚠️ Credentials saved but validation failed. Make sure Vertex AI API is enabled.")
+                                        st.warning("⚠️ API key saved but validation failed. Make sure Imagen API is enabled.")
                                         st.session_state.imagen_enabled = True  # Allow usage anyway
                                 except Exception as e:
                                     st.session_state.imagen_enabled = True
-                                    st.warning(f"Credentials saved. Validation skipped: {str(e)}")
+                                    st.warning(f"API key saved. Validation skipped: {str(e)}")
                             st.rerun()
+                        else:
+                            st.error("❌ Invalid API key format. Please check your key.")
+                    else:
+                        st.error("❌ Please enter an API key.")
 
-                except json.JSONDecodeError:
-                    st.error("Invalid JSON file. Please upload a valid service account JSON file.")
-                except Exception as e:
-                    st.error(f"Error reading file: {str(e)}")
+            with col2:
+                if st.button("🧪 Test Connection", use_container_width=True):
+                    if api_key_input:
+                        with st.spinner("Testing connection..."):
+                            try:
+                                is_valid = test_imagen_connection(api_key_input)
+                                if is_valid:
+                                    st.success("✅ Connection successful!")
+                                else:
+                                    st.error("❌ Connection failed. Check your API key.")
+                            except Exception as e:
+                                st.error(f"❌ Error: {str(e)}")
+                    else:
+                        st.error("❌ Please enter an API key to test.")
 
             # Current status
-            if st.session_state.imagen_credentials:
+            if st.session_state.imagen_api_key:
                 st.markdown("---")
                 st.markdown("### Current Status")
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.session_state.imagen_enabled:
-                        project_id = st.session_state.imagen_credentials.get('project_id', 'Unknown')
-                        st.success(f"✅ Imagen Enabled: {project_id}")
+                        masked_key = st.session_state.imagen_api_key[:8] + "..." + st.session_state.imagen_api_key[-4:]
+                        st.success(f"✅ Imagen Enabled: {masked_key}")
                     else:
-                        st.warning(f"⚠️ Credentials loaded: {st.session_state.imagen_credentials.get('project_id', 'Unknown')}")
+                        st.warning("⚠️ API key loaded but not validated")
                 with col2:
-                    if st.button("🗑️ Clear Imagen Credentials", use_container_width=True):
-                        st.session_state.imagen_credentials = None
+                    if st.button("🗑️ Clear API Key", use_container_width=True):
+                        st.session_state.imagen_api_key = None
                         st.session_state.imagen_enabled = False
-                        clear_imagen_credentials()
-                        st.info("Imagen credentials cleared")
+                        clear_imagen_api_key()
+                        st.info("API key cleared")
                         st.rerun()
 
             st.markdown("---")
             st.markdown("""
-            ### How to Get Vertex AI Service Account JSON
+            ### How to Get Google AI Studio API Key
 
-            **Option 1: Reuse Vision API Credentials (Recommended)**
-            If you already configured Vision API credentials above, just click "♻️ Reuse Vision API Credentials" button.
-            Make sure to enable **Vertex AI API** in your Google Cloud project.
-
-            **Option 2: Create New Service Account**
-            1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-            2. Create a new project or select an existing one
-            3. Enable **both** the **Cloud Vision API** and **Vertex AI API**
-            4. Go to **IAM & Admin** → **Service Accounts**
-            5. Click **Create Service Account**
-            6. Give it a name and click **Create**
-            7. Grant these roles:
-               - **Cloud Vision API User** (for image analysis)
-               - **Vertex AI User** (for Imagen 2)
-            8. Click **Done**, then click on the service account
-            9. Go to **Keys** → **Add Key** → **Create new key** → **JSON**
-            10. Upload the downloaded JSON file in both Vision API and Imagen 2 sections
+            1. Go to [Google AI Studio](https://aistudio.google.com/)
+            2. Sign in with your Google account
+            3. Click on **"Get API key"** in the left sidebar
+            4. Click **"Create API key"** button
+            5. Select an existing Google Cloud project or create a new one
+            6. Copy the API key (starts with `AIza`)
+            7. Paste it in the field above and click **"Save API Key"**
 
             **Important Notes:**
-            - **Same credentials work for both APIs** - you can use one service account for everything
-            - New Google Cloud accounts get **$300 in free credits**
-            - Vision API: 1,000 free requests/month, then ~$1.50 per 1,000 images
-            - Imagen 2: ~$0.020 per generated image (standard resolution)
-            - Make sure both APIs are enabled in your project
+            - **Free tier**: First 50 images per day are free
+            - **After free tier**: $0.04 per image (significantly cheaper than Vertex AI)
+            - No credit card required for free tier
+            - API key is simpler to use than Service Account credentials
+            - Keep your API key secure and never share it publicly
             """)
 
             st.markdown("---")
-            st.info("**Note:** Credentials are saved locally and will persist until cleared.")
+            st.info("**Note:** API key is saved locally and will persist until cleared.")
 
 
 def main():
