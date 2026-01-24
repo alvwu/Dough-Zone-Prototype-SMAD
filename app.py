@@ -1572,16 +1572,16 @@ def render_post_analysis(df: pd.DataFrame):
         # Quick guide
         with st.expander("ℹ️ How to Use - Three Generation Modes"):
             st.markdown("""
-            **1. 🌟 Recommended** (Quick & Easy)
-            - Generates prompts based on **Google Vision API labels** detected in your top posts
-            - Perfect for quick ideation
-            - Uses actual visual elements from your successful content
-
-            **2. 🤖 Data-Based (AI)** (Most Powerful)
+            **1. 🤖 Data-Based (AI)** (Most Powerful - Recommended)
             - Uses **Gemini 2.0 Flash via OpenRouter** to intelligently analyze your data
             - Considers engagement patterns, visual themes, colors, and captions
             - Creates highly contextual and creative prompts
             - Requires OpenRouter API (falls back to templates if not configured)
+
+            **2. 🌟 Recommended** (Quick & Easy)
+            - Generates prompts based on **Google Vision API labels** detected in your top posts
+            - Perfect for quick ideation
+            - Uses actual visual elements from your successful content
 
             **3. ✏️ Custom** (Full Control)
             - Define your own subject, mood, colors, and lighting
@@ -1606,8 +1606,8 @@ def render_post_analysis(df: pd.DataFrame):
             with col_mode:
                 gen_mode = st.selectbox(
                     "📋 Generation Mode",
-                    ["Recommended", "Data-Based (AI)", "Custom"],
-                    help="Recommended: Quick prompts from Vision labels | Data-Based: AI analyzes top posts | Custom: Your own parameters"
+                    ["Data-Based (AI)", "Recommended", "Custom"],
+                    help="Data-Based: AI analyzes top posts | Recommended: Quick prompts from Vision labels | Custom: Your own parameters"
                 )
 
             with col_type:
@@ -1876,10 +1876,9 @@ def render_post_analysis(df: pd.DataFrame):
                                         "Aspect Ratio",
                                         ["1:1", "9:16", "16:9", "4:3", "3:4"],
                                         index=["1:1", "9:16", "16:9", "4:3", "3:4"].index(st.session_state[ar_key]),
-                                        key=f"aspect_select_{idx}",
+                                        key=ar_key,  # Use ar_key directly as the widget key
                                         help="Image dimensions"
                                     )
-                                    st.session_state[ar_key] = aspect_ratio
 
                                 with col_gen:
                                     generate_clicked = st.button(
@@ -2081,10 +2080,9 @@ def render_post_analysis(df: pd.DataFrame):
                             "Aspect Ratio",
                             ["1:1", "9:16", "16:9", "4:3", "3:4"],
                             index=["1:1", "9:16", "16:9", "4:3", "3:4"].index(st.session_state.custom_aspect_ratio),
-                            key="aspect_custom_select",
+                            key="custom_aspect_ratio",  # Use session state key directly
                             help="Image dimensions"
                         )
-                        st.session_state.custom_aspect_ratio = aspect_ratio_custom
 
                     with col_gen_custom:
                         generate_custom_clicked = st.button(
