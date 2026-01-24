@@ -117,7 +117,8 @@ def generate_image_with_imagen(
 
         # Vertex AI Imagen endpoint
         location = "us-central1"  # Imagen is available in us-central1
-        url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/imagegeneration@006:predict"
+        # Using Imagen 3 (the latest model, replacing deprecated imagegeneration@006)
+        url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/imagen-3.0-generate-001:predict"
         print(f"[DEBUG] API endpoint: {url}")
 
         # Request payload
@@ -243,8 +244,8 @@ def test_imagen_connection(credentials_dict: dict) -> bool:
 
         import requests
 
-        # Simple request to verify access
-        url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/imagegeneration@006"
+        # Simple request to verify access (using Imagen 3)
+        url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/imagen-3.0-generate-001"
 
         headers = {
             'Authorization': f'Bearer {access_token}'
