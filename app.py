@@ -33,6 +33,15 @@ from imagen_api import (
     save_generated_image,
     estimate_imagen_cost
 )
+from video_api import (
+    generate_video_with_veo,
+    validate_video_credentials,
+    test_video_connection,
+    download_video_from_gcs,
+    create_gcs_bucket_if_needed,
+    get_default_bucket_name,
+    estimate_video_cost
+)
 
 # Page configuration
 st.set_page_config(
@@ -46,10 +55,12 @@ st.set_page_config(
 DATA_DIR = Path(__file__).parent / "data"
 IMAGE_DIR = Path(__file__).parent / "image"
 GENERATED_IMAGES_DIR = Path(__file__).parent / "generated_images"
+GENERATED_VIDEOS_DIR = Path(__file__).parent / "generated_videos"
 CREDENTIALS_FILE = Path(__file__).parent / ".vision_credentials.json"
 VISION_CACHE_FILE = Path(__file__).parent / ".vision_cache.json"
 GEMINI_KEY_FILE = Path(__file__).parent / ".gemini_key.txt"
-# Imagen uses the same credentials as Vision API (no separate file needed)
+GCS_BUCKET_FILE = Path(__file__).parent / ".gcs_bucket.txt"
+# Imagen and Veo use the same credentials as Vision API (no separate file needed)
 
 # Warm orange color palette for charts
 CHART_COLORS = {
@@ -414,7 +425,30 @@ def clear_gemini_key():
         GEMINI_KEY_FILE.unlink()
 
 
-# Imagen now uses the same Vision API credentials - no separate functions needed
+# Imagen and Veo now use the same Vision API credentials - no separate functions needed
+
+
+def load_gcs_bucket():
+    """Load GCS bucket name from file if exists."""
+    if GCS_BUCKET_FILE.exists():
+        try:
+            with open(GCS_BUCKET_FILE, 'r') as f:
+                return f.read().strip()
+        except:
+            return None
+    return None
+
+
+def save_gcs_bucket(bucket_name: str):
+    """Save GCS bucket name to file."""
+    with open(GCS_BUCKET_FILE, 'w') as f:
+        f.write(bucket_name)
+
+
+def clear_gcs_bucket():
+    """Remove saved GCS bucket file."""
+    if GCS_BUCKET_FILE.exists():
+        GCS_BUCKET_FILE.unlink()
 
 
 def init_session_state():
@@ -451,6 +485,23 @@ def init_session_state():
     # Track the last generated image for display after rerun
     if 'last_generated_image' not in st.session_state:
         st.session_state.last_generated_image = None
+
+    # Video generation state
+    if 'veo_enabled' not in st.session_state:
+        st.session_state.veo_enabled = st.session_state.vision_credentials is not None
+    
+    if 'gcs_bucket_name' not in st.session_state:
+        saved_bucket = load_gcs_bucket()
+        st.session_state.gcs_bucket_name = saved_bucket
+    
+    if 'generated_videos' not in st.session_state:
+        st.session_state.generated_videos = []
+    
+    if 'last_generated_video' not in st.session_state:
+        st.session_state.last_generated_video = None
+    
+    if 'video_generation_in_progress' not in st.session_state:
+        st.session_state.video_generation_in_progress = False
 
 
 def load_data():
@@ -988,8 +1039,37 @@ def generate_prompts_with_gemini(top_performers, vision_results, content_type, s
 
         captions_context = "\n".join([f"- {cap}" for cap in top_captions]) if top_captions else "N/A"
 
-        # Build prompt for Gemini
-        gemini_prompt = f"""You are an expert AI prompt engineer for image and video generation. Analyze this social media performance data and generate {num_prompts} creative prompts for {'image' if content_type == 'Image' else 'video' if content_type == 'Video' else 'image and video'} generation.
+        # Build different prompts for Image vs Video
+        if content_type == 'Video':
+            # Video-specific prompt for Gemini
+            gemini_prompt = f"""You are an expert AI prompt engineer for SHORT-FORM VIDEO generation (5-10 seconds for Instagram Reels/Stories). Analyze this social media performance data and generate {num_prompts} creative video prompt(s).
+
+**Performance Data:**
+- Visual themes that work: {themes_str}
+- Successful color palettes: {colors_str}
+- Style preference: {style_preference}
+- Sample high-performing captions:
+{captions_context}
+
+**CRITICAL Requirements for Video Prompts:**
+1. Generate exactly {num_prompts} unique video prompt(s)
+2. Each prompt MUST be optimized for AI video generators like Google Veo, Runway ML, Pika Labs
+3. Focus on MOTION and MOVEMENT - describe what moves, how it moves, camera motion
+4. Keep the scene SIMPLE - short videos work best with one clear subject/action
+5. Include camera directions (e.g., "slow zoom in", "pan left", "tracking shot", "static wide shot")
+6. Describe lighting and atmosphere that matches {colors_str} color palette
+7. Match the {style_preference} visual style
+8. The video will be 5-10 seconds, so describe a SINGLE moment or simple action, NOT a story
+9. Each prompt should be 2-3 sentences, highly detailed but focused
+
+**Good video prompt examples:**
+- "Slow motion close-up of steam rising from a freshly brewed coffee cup, warm golden morning light streaming through a window, camera slowly pulls back to reveal a cozy cafe setting"
+- "Cinematic tracking shot following a dumpling being lifted by chopsticks, steam wisps rising, shallow depth of field with warm amber bokeh in background"
+
+Format your response as a numbered list with each prompt on a new line. Start each line with the number followed by a period."""
+        else:
+            # Image prompt for Gemini (original behavior)
+            gemini_prompt = f"""You are an expert AI prompt engineer for image generation. Analyze this social media performance data and generate {num_prompts} creative prompts for image generation.
 
 **Performance Data:**
 - Visual themes that work: {themes_str}
@@ -1000,7 +1080,7 @@ def generate_prompts_with_gemini(top_performers, vision_results, content_type, s
 
 **Requirements:**
 1. Generate exactly {num_prompts} unique prompts
-2. Each prompt should be optimized for {'AI image generators like Midjourney, DALL-E, Stable Diffusion' if content_type == 'Image' else 'AI video generators like Runway ML, Pika Labs' if content_type == 'Video' else 'both image and video AI generators'}
+2. Each prompt should be optimized for AI image generators like Midjourney, DALL-E, Stable Diffusion, Google Imagen
 3. Incorporate the visual themes and colors that performed well
 4. Match the {style_preference} aesthetic
 5. Make prompts engaging, specific, and creative
@@ -1028,7 +1108,7 @@ Format your response as a numbered list with each prompt on a new line. Start ea
                 # Remove leading number, period, dash, or asterisk
                 prompt_text = line.lstrip('0123456789.-* ')
                 if prompt_text:
-                    prompt_type = "Image" if content_type == "Image" else "Video" if content_type == "Video" else ("Image" if len(generated_prompts) % 2 == 0 else "Video")
+                    prompt_type = content_type  # Use the selected content type
                     generated_prompts.append({
                         "type": prompt_type,
                         "prompt": prompt_text,
@@ -1558,21 +1638,33 @@ def render_post_analysis(df: pd.DataFrame):
     # --- AI PROMPT GENERATOR TAB ---
     with tab_ai_prompt:
         st.subheader("🤖 AI Prompt Generator")
-        st.markdown("Generate creative AI image and video prompts, then create images instantly with Vertex AI Imagen!")
+        st.markdown("Generate creative AI prompts, then create images with Imagen or videos with Veo!")
 
         # Quick guide
-        with st.expander("ℹ️ How to Use - Two Generation Modes"):
+        with st.expander("ℹ️ How to Use - Generate Images & Videos"):
             st.markdown("""
+            **Content Types:**
+            - **🖼️ Image**: Generate prompts optimized for AI image generators, then create with Vertex AI Imagen
+            - **🎬 Video**: Generate prompts for short-form video (5-8 seconds), then create with Vertex AI Veo
+
+            **Generation Modes:**
+
             **1. 🤖 Recommended** (AI-Powered)
             - Uses **Gemini 2.0 Flash via OpenRouter** to intelligently analyze your data
-            - Considers engagement patterns, visual themes, colors, and captions
-            - Creates highly contextual and creative prompts
+            - Creates highly contextual and creative prompts based on your top performers
+            - For videos: Includes camera movements and motion descriptions
             - Requires OpenRouter API (falls back to templates if not configured)
 
             **2. ✏️ Custom** (Full Control)
             - Define your own subject, mood, colors, and lighting
             - Perfect when you have a specific vision in mind
             - No API required
+
+            **Video Generation Notes:**
+            - Videos are 5-8 seconds (perfect for Instagram Reels/Stories)
+            - Requires Cloud Storage bucket (configure in API Settings)
+            - Generation takes 2-5 minutes
+            - Cost: ~$0.35/second (~$1.75 for 5 seconds)
             """)
 
         st.markdown("---")
@@ -1866,6 +1958,191 @@ def render_post_analysis(df: pd.DataFrame):
                         elif prompt_data['type'] == 'Image' and not st.session_state.imagen_enabled:
                             st.info("💡 Configure Vertex AI Imagen in API Settings to generate images directly")
 
+                        # Vertex AI Veo video generation option (only for videos)
+                        elif prompt_data['type'] == 'Video' and st.session_state.veo_enabled:
+                            st.markdown("---")
+                            st.markdown("**🎬 Generate Video with Vertex AI Veo**")
+
+                            # Check if GCS bucket is configured
+                            if not st.session_state.gcs_bucket_name:
+                                st.warning("⚠️ Cloud Storage bucket not configured. Please configure it in API Settings first.")
+                                st.info("💡 Go to **API Settings** tab → **Vertex AI Veo Settings** to set up your bucket")
+                            else:
+                                # Initialize per-prompt generated video tracking
+                                video_key = f"generated_video_{idx}"
+                                if video_key not in st.session_state:
+                                    st.session_state[video_key] = None
+
+                                # Show video generation controls
+                                col_ar, col_dur, col_gen_vid = st.columns([1, 1, 1])
+
+                                with col_ar:
+                                    video_ar_key = f"video_aspect_ratio_{idx}"
+                                    if video_ar_key not in st.session_state:
+                                        st.session_state[video_ar_key] = "9:16"
+                                    
+                                    video_aspect_ratio = st.selectbox(
+                                        "Aspect Ratio",
+                                        ["9:16", "16:9", "1:1"],
+                                        index=["9:16", "16:9", "1:1"].index(st.session_state[video_ar_key]),
+                                        key=video_ar_key,
+                                        help="9:16 for Instagram Reels/Stories, 16:9 for landscape, 1:1 for square"
+                                    )
+
+                                with col_dur:
+                                    video_dur_key = f"video_duration_{idx}"
+                                    if video_dur_key not in st.session_state:
+                                        st.session_state[video_dur_key] = 5
+                                    
+                                    video_duration = st.selectbox(
+                                        "Duration",
+                                        [5, 6, 7, 8],
+                                        index=[5, 6, 7, 8].index(st.session_state[video_dur_key]),
+                                        key=video_dur_key,
+                                        help="Video duration in seconds (5-8s)"
+                                    )
+
+                                with col_gen_vid:
+                                    st.markdown("&nbsp;")  # Spacer for alignment
+                                    generate_video_clicked = st.button(
+                                        "🎬 Generate Video",
+                                        key=f"gen_veo_{idx}",
+                                        use_container_width=True,
+                                        type="primary"
+                                    )
+
+                                # Show estimated cost
+                                est_cost = estimate_video_cost(st.session_state[video_dur_key], 1)
+                                st.caption(f"💰 Estimated cost: ~${est_cost:.2f} | ⏱️ Generation takes 2-5 minutes")
+
+                                # Handle video generation
+                                if generate_video_clicked:
+                                    if not st.session_state.vision_credentials:
+                                        st.error("❌ No credentials found. Please configure them in API Settings.")
+                                    else:
+                                        # Create output directory
+                                        GENERATED_VIDEOS_DIR.mkdir(exist_ok=True)
+
+                                        # Create a placeholder for progress updates
+                                        progress_placeholder = st.empty()
+                                        status_placeholder = st.empty()
+
+                                        try:
+                                            status_placeholder.info("🎬 Starting video generation with Vertex AI Veo...")
+                                            
+                                            # Generate GCS output URI
+                                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                            gcs_output_uri = f"gs://{st.session_state.gcs_bucket_name}/veo_output/{timestamp}/"
+
+                                            # Progress callback
+                                            def update_progress(message):
+                                                status_placeholder.info(f"🎬 {message}")
+
+                                            # Generate video
+                                            result = generate_video_with_veo(
+                                                prompt=prompt_data['prompt'],
+                                                credentials_dict=st.session_state.vision_credentials,
+                                                gcs_output_uri=gcs_output_uri,
+                                                aspect_ratio=st.session_state[video_ar_key],
+                                                duration_seconds=st.session_state[video_dur_key],
+                                                number_of_videos=1,
+                                                progress_callback=update_progress
+                                            )
+
+                                            if result and result.get('videos'):
+                                                status_placeholder.info("📥 Downloading video from Cloud Storage...")
+                                                
+                                                # Download the video
+                                                video_info = result['videos'][0]
+                                                video_gcs_uri = video_info['uri']
+                                                
+                                                video_filename = f"veo_{idx}_{timestamp}.mp4"
+                                                video_path = GENERATED_VIDEOS_DIR / video_filename
+                                                
+                                                download_video_from_gcs(
+                                                    gcs_uri=video_gcs_uri,
+                                                    credentials_dict=st.session_state.vision_credentials,
+                                                    output_path=str(video_path)
+                                                )
+
+                                                # Store in session state
+                                                generated_video_info = {
+                                                    'path': str(video_path),
+                                                    'prompt': prompt_data['prompt'],
+                                                    'timestamp': timestamp,
+                                                    'duration': st.session_state[video_dur_key],
+                                                    'aspect_ratio': st.session_state[video_ar_key],
+                                                    'cost': est_cost,
+                                                    'gcs_uri': video_gcs_uri
+                                                }
+                                                st.session_state[video_key] = generated_video_info
+                                                
+                                                if 'generated_videos' not in st.session_state:
+                                                    st.session_state.generated_videos = []
+                                                st.session_state.generated_videos.append(generated_video_info)
+
+                                                # Clear status and show success
+                                                status_placeholder.empty()
+                                                progress_placeholder.empty()
+                                                
+                                                st.success("✅ Video generated successfully!")
+                                                st.video(str(video_path))
+                                                st.caption(f"💰 Cost: ~${est_cost:.2f} | ⏱️ {st.session_state[video_dur_key]}s | 📁 {str(video_path)}")
+                                                
+                                                # Download button
+                                                with open(video_path, 'rb') as f:
+                                                    st.download_button(
+                                                        label="📥 Download Video",
+                                                        data=f,
+                                                        file_name=video_filename,
+                                                        mime="video/mp4",
+                                                        key=f"download_video_{idx}_{timestamp}"
+                                                    )
+                                            else:
+                                                status_placeholder.empty()
+                                                st.error("❌ No videos were generated. The API returned empty results.")
+
+                                        except Exception as e:
+                                            status_placeholder.empty()
+                                            progress_placeholder.empty()
+                                            st.error(f"❌ Video generation failed: {str(e)}")
+                                            
+                                            if "quota" in str(e).lower() or "billing" in str(e).lower():
+                                                st.warning("💡 Make sure billing is enabled and you have quota for Veo.")
+                                            elif "permission" in str(e).lower() or "403" in str(e):
+                                                st.warning("💡 Check that Vertex AI API is enabled and your service account has the correct permissions.")
+                                            elif "bucket" in str(e).lower():
+                                                st.warning("💡 Check that your Cloud Storage bucket exists and is accessible.")
+
+                                # Show previously generated video if exists
+                                if st.session_state[video_key] is not None and not generate_video_clicked:
+                                    st.markdown("---")
+                                    vid_info = st.session_state[video_key]
+                                    st.info("🎬 Previously Generated Video:")
+                                    
+                                    if Path(vid_info['path']).exists():
+                                        st.video(vid_info['path'])
+                                        st.caption(f"💰 Cost: ~${vid_info['cost']:.2f} | ⏱️ {vid_info['duration']}s | 📁 {vid_info['path']}")
+                                        
+                                        # Download button
+                                        with open(vid_info['path'], 'rb') as f:
+                                            st.download_button(
+                                                label="📥 Download Video",
+                                                data=f,
+                                                file_name=Path(vid_info['path']).name,
+                                                mime="video/mp4",
+                                                key=f"download_prev_video_{idx}"
+                                            )
+                                    else:
+                                        st.warning("Video file not found. It may have been deleted.")
+                                    
+                                    if st.button("🗑️ Clear", key=f"clear_video_{idx}"):
+                                        st.session_state[video_key] = None
+                                        st.rerun()
+
+                        elif prompt_data['type'] == 'Video' and not st.session_state.veo_enabled:
+                            st.info("💡 Configure Vertex AI Veo in API Settings to generate videos directly")
+
         # ============== CUSTOM MODE ==============
         else:  # gen_mode == "Custom"
             st.info("✏️ Create custom prompts with your own parameters")
@@ -2061,6 +2338,173 @@ def render_post_analysis(df: pd.DataFrame):
                 elif content_type == 'Image' and not st.session_state.imagen_enabled:
                     st.info("💡 Configure Vertex AI Imagen in API Settings to generate images directly")
 
+                # Vertex AI Veo video generation option for custom prompts (only for videos)
+                elif content_type == 'Video' and st.session_state.veo_enabled:
+                    st.markdown("---")
+                    st.markdown("**🎬 Generate Video with Vertex AI Veo**")
+
+                    # Check if GCS bucket is configured
+                    if not st.session_state.gcs_bucket_name:
+                        st.warning("⚠️ Cloud Storage bucket not configured. Please configure it in API Settings first.")
+                        st.info("💡 Go to **API Settings** tab → **Vertex AI Veo Settings** to set up your bucket")
+                    else:
+                        # Initialize custom video tracking
+                        if 'custom_generated_video' not in st.session_state:
+                            st.session_state.custom_generated_video = None
+                        if 'custom_video_aspect_ratio' not in st.session_state:
+                            st.session_state.custom_video_aspect_ratio = "9:16"
+                        if 'custom_video_duration' not in st.session_state:
+                            st.session_state.custom_video_duration = 5
+
+                        col_ar_custom, col_dur_custom, col_gen_vid_custom = st.columns([1, 1, 1])
+
+                        with col_ar_custom:
+                            custom_video_ar = st.selectbox(
+                                "Aspect Ratio",
+                                ["9:16", "16:9", "1:1"],
+                                index=["9:16", "16:9", "1:1"].index(st.session_state.custom_video_aspect_ratio),
+                                key="custom_video_aspect_ratio",
+                                help="9:16 for Instagram Reels/Stories"
+                            )
+
+                        with col_dur_custom:
+                            custom_video_dur = st.selectbox(
+                                "Duration",
+                                [5, 6, 7, 8],
+                                index=[5, 6, 7, 8].index(st.session_state.custom_video_duration),
+                                key="custom_video_duration",
+                                help="Video duration in seconds"
+                            )
+
+                        with col_gen_vid_custom:
+                            st.markdown("&nbsp;")
+                            generate_custom_video_clicked = st.button(
+                                "🎬 Generate Video",
+                                key="gen_veo_custom",
+                                use_container_width=True,
+                                type="primary"
+                            )
+
+                        # Show estimated cost
+                        est_cost_custom = estimate_video_cost(st.session_state.custom_video_duration, 1)
+                        st.caption(f"💰 Estimated cost: ~${est_cost_custom:.2f} | ⏱️ Generation takes 2-5 minutes")
+
+                        # Handle video generation
+                        if generate_custom_video_clicked:
+                            if not st.session_state.vision_credentials:
+                                st.error("❌ No credentials found. Please configure them in API Settings.")
+                            else:
+                                GENERATED_VIDEOS_DIR.mkdir(exist_ok=True)
+
+                                progress_placeholder_custom = st.empty()
+                                status_placeholder_custom = st.empty()
+
+                                try:
+                                    status_placeholder_custom.info("🎬 Starting video generation with Vertex AI Veo...")
+
+                                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                    gcs_output_uri = f"gs://{st.session_state.gcs_bucket_name}/veo_output/{timestamp}/"
+
+                                    def update_progress_custom(message):
+                                        status_placeholder_custom.info(f"🎬 {message}")
+
+                                    result = generate_video_with_veo(
+                                        prompt=custom_prompt,
+                                        credentials_dict=st.session_state.vision_credentials,
+                                        gcs_output_uri=gcs_output_uri,
+                                        aspect_ratio=st.session_state.custom_video_aspect_ratio,
+                                        duration_seconds=st.session_state.custom_video_duration,
+                                        number_of_videos=1,
+                                        progress_callback=update_progress_custom
+                                    )
+
+                                    if result and result.get('videos'):
+                                        status_placeholder_custom.info("📥 Downloading video from Cloud Storage...")
+
+                                        video_info = result['videos'][0]
+                                        video_gcs_uri = video_info['uri']
+
+                                        video_filename = f"veo_custom_{timestamp}.mp4"
+                                        video_path = GENERATED_VIDEOS_DIR / video_filename
+
+                                        download_video_from_gcs(
+                                            gcs_uri=video_gcs_uri,
+                                            credentials_dict=st.session_state.vision_credentials,
+                                            output_path=str(video_path)
+                                        )
+
+                                        generated_video_info = {
+                                            'path': str(video_path),
+                                            'prompt': custom_prompt,
+                                            'timestamp': timestamp,
+                                            'duration': st.session_state.custom_video_duration,
+                                            'aspect_ratio': st.session_state.custom_video_aspect_ratio,
+                                            'cost': est_cost_custom,
+                                            'gcs_uri': video_gcs_uri
+                                        }
+                                        st.session_state.custom_generated_video = generated_video_info
+
+                                        if 'generated_videos' not in st.session_state:
+                                            st.session_state.generated_videos = []
+                                        st.session_state.generated_videos.append(generated_video_info)
+
+                                        status_placeholder_custom.empty()
+                                        progress_placeholder_custom.empty()
+
+                                        st.success("✅ Video generated successfully!")
+                                        st.video(str(video_path))
+                                        st.caption(f"💰 Cost: ~${est_cost_custom:.2f} | ⏱️ {st.session_state.custom_video_duration}s | 📁 {str(video_path)}")
+
+                                        with open(video_path, 'rb') as f:
+                                            st.download_button(
+                                                label="📥 Download Video",
+                                                data=f,
+                                                file_name=video_filename,
+                                                mime="video/mp4",
+                                                key=f"download_custom_video_{timestamp}"
+                                            )
+                                    else:
+                                        status_placeholder_custom.empty()
+                                        st.error("❌ No videos were generated.")
+
+                                except Exception as e:
+                                    status_placeholder_custom.empty()
+                                    progress_placeholder_custom.empty()
+                                    st.error(f"❌ Video generation failed: {str(e)}")
+
+                                    if "quota" in str(e).lower() or "billing" in str(e).lower():
+                                        st.warning("💡 Make sure billing is enabled and you have quota for Veo.")
+                                    elif "bucket" in str(e).lower():
+                                        st.warning("💡 Check that your Cloud Storage bucket exists and is accessible.")
+
+                        # Show previously generated video if exists
+                        if st.session_state.custom_generated_video is not None and not generate_custom_video_clicked:
+                            st.markdown("---")
+                            vid_info = st.session_state.custom_generated_video
+                            st.info("🎬 Previously Generated Video:")
+
+                            if Path(vid_info['path']).exists():
+                                st.video(vid_info['path'])
+                                st.caption(f"💰 Cost: ~${vid_info['cost']:.2f} | ⏱️ {vid_info['duration']}s | 📁 {vid_info['path']}")
+
+                                with open(vid_info['path'], 'rb') as f:
+                                    st.download_button(
+                                        label="📥 Download Video",
+                                        data=f,
+                                        file_name=Path(vid_info['path']).name,
+                                        mime="video/mp4",
+                                        key="download_prev_custom_video"
+                                    )
+                            else:
+                                st.warning("Video file not found.")
+
+                            if st.button("🗑️ Clear", key="clear_custom_video"):
+                                st.session_state.custom_generated_video = None
+                                st.rerun()
+
+                elif content_type == 'Video' and not st.session_state.veo_enabled:
+                    st.info("💡 Configure Vertex AI Veo in API Settings to generate videos directly")
+
         st.markdown("---")
 
         # Tips and best practices
@@ -2068,21 +2512,32 @@ def render_post_analysis(df: pd.DataFrame):
             st.markdown("""
             **Best Practices:**
             - Use generated prompts as a starting point - feel free to customize further
-            - Test prompts across different AI platforms (Midjourney, DALL-E, etc.) for varied results
+            - Test prompts across different AI platforms for varied results
             - Combine elements from multiple prompts for unique creations
             - Add specific brand colors or elements to maintain consistency
             - Iterate on prompts that generate high-engagement content
 
-            **Popular AI Tools:**
-            - **Images:** Google Vertex AI Imagen (integrated!), Midjourney, DALL-E 3, Stable Diffusion, Leonardo.AI
-            - **Videos:** Runway ML, Pika Labs, Synthesia, D-ID
-            - **Enhancement:** Topaz AI, Magnific AI, Krea.ai
+            **Integrated AI Tools:**
+            - **Images:** Google Vertex AI Imagen - generate images directly in this dashboard!
+            - **Videos:** Google Vertex AI Veo - generate 5-8 second videos for Instagram!
 
             **Imagen Integration:**
-            - Configure Imagen in API Settings to generate images directly in the dashboard
-            - Uses Google AI Studio API with 50 free images per day
-            - Approximately $0.04 per image after free tier (cheaper than Vertex AI)
+            - Configure in API Settings to generate images directly
+            - ~$0.020 per image (standard resolution)
             - Supports multiple aspect ratios (1:1, 9:16, 16:9, 4:3, 3:4)
+
+            **Veo Video Integration:**
+            - Configure in API Settings with a Cloud Storage bucket
+            - Perfect for Instagram Reels/Stories (5-8 seconds)
+            - Supports 9:16 (vertical), 16:9 (landscape), 1:1 (square)
+            - ~$0.35 per second of video (~$1.75 for 5 seconds)
+            - Generation takes 2-5 minutes
+
+            **Video Prompt Tips:**
+            - Focus on one clear subject or action (short videos work best with simplicity)
+            - Include camera movement descriptions (slow zoom, pan, tracking shot)
+            - Describe the lighting and atmosphere
+            - Keep motion smooth and continuous for the 5-8 second duration
 
             **Pro Tip:** Track which AI-generated content performs best and use those insights to refine future prompts!
             """)
@@ -2385,6 +2840,134 @@ def render_post_analysis(df: pd.DataFrame):
 
             st.markdown("---")
             st.info("**Note:** Imagen automatically uses your Vision API credentials!")
+
+        # --- VERTEX AI VEO SETTINGS SECTION ---
+        with st.expander("🎬 Vertex AI Veo Settings (Video Generation)", expanded=False):
+            st.markdown("Configure Vertex AI Veo for AI video generation. Veo uses the same credentials as Vision API.")
+            st.markdown("---")
+
+            # Show current status
+            if st.session_state.vision_credentials:
+                project_id = st.session_state.vision_credentials.get('project_id', 'Unknown')
+                st.success(f"✅ Using Vision API credentials for project: **{project_id}**")
+
+                # GCS Bucket Configuration
+                st.markdown("### Cloud Storage Bucket")
+                st.markdown("Veo requires a Cloud Storage bucket to store generated videos temporarily.")
+
+                # Show current bucket status
+                if st.session_state.gcs_bucket_name:
+                    st.info(f"📦 Current bucket: `{st.session_state.gcs_bucket_name}`")
+
+                # Bucket name input
+                default_bucket = get_default_bucket_name(st.session_state.vision_credentials)
+                bucket_input = st.text_input(
+                    "Bucket Name",
+                    value=st.session_state.gcs_bucket_name if st.session_state.gcs_bucket_name else default_bucket,
+                    help="Enter your Cloud Storage bucket name (must already exist in your GCP project)",
+                    placeholder=default_bucket
+                )
+
+                col_save_bucket, col_create_bucket = st.columns(2)
+
+                with col_save_bucket:
+                    if st.button("💾 Save Bucket Name", use_container_width=True, key="save_gcs_bucket"):
+                        if bucket_input and len(bucket_input) > 3:
+                            st.session_state.gcs_bucket_name = bucket_input
+                            save_gcs_bucket(bucket_input)
+                            st.session_state.veo_enabled = True
+                            st.success(f"Bucket name saved: {bucket_input}")
+                            st.rerun()
+                        else:
+                            st.error("Please enter a valid bucket name")
+
+                with col_create_bucket:
+                    if st.button("🪣 Create Bucket", use_container_width=True, key="create_gcs_bucket"):
+                        if bucket_input and len(bucket_input) > 3:
+                            with st.spinner(f"Creating bucket {bucket_input}..."):
+                                try:
+                                    success = create_gcs_bucket_if_needed(
+                                        bucket_name=bucket_input,
+                                        credentials_dict=st.session_state.vision_credentials,
+                                        location="us-central1"
+                                    )
+                                    if success:
+                                        st.session_state.gcs_bucket_name = bucket_input
+                                        save_gcs_bucket(bucket_input)
+                                        st.session_state.veo_enabled = True
+                                        st.success(f"✅ Bucket '{bucket_input}' is ready!")
+                                        st.rerun()
+                                    else:
+                                        st.error("Failed to create bucket. Check permissions.")
+                                except Exception as e:
+                                    st.error(f"Error creating bucket: {str(e)}")
+                        else:
+                            st.error("Please enter a valid bucket name")
+
+                # Test Veo connection
+                st.markdown("---")
+                if st.button("🧪 Test Vertex AI Veo Connection", use_container_width=True, key="test_veo_connection"):
+                    with st.spinner("Testing Vertex AI Veo connection..."):
+                        try:
+                            is_valid = test_video_connection(st.session_state.vision_credentials)
+                            if is_valid:
+                                st.success("✅ Vertex AI Veo connection successful!")
+                                st.session_state.veo_enabled = True
+                            else:
+                                st.warning("⚠️ Connection test inconclusive. Make sure Vertex AI API is enabled.")
+                        except Exception as e:
+                            st.error(f"❌ Connection test failed: {str(e)}")
+                            st.warning("💡 Make sure Vertex AI API is enabled in your Google Cloud project.")
+
+                # Clear bucket button
+                if st.session_state.gcs_bucket_name:
+                    st.markdown("---")
+                    if st.button("🗑️ Clear Bucket Configuration", use_container_width=True, key="clear_gcs_bucket"):
+                        st.session_state.gcs_bucket_name = None
+                        st.session_state.veo_enabled = False
+                        clear_gcs_bucket()
+                        st.info("Bucket configuration cleared")
+                        st.rerun()
+
+            else:
+                st.warning("⚠️ No Vision API credentials configured")
+                st.info("👆 Configure Vision API credentials above to enable Veo")
+
+            st.markdown("---")
+            st.markdown("""
+            ### How to Enable Vertex AI Veo
+
+            **Veo uses the same credentials as Vision API!**
+
+            1. Configure Vision API credentials above (if not already done)
+            2. Enable **Vertex AI API** in Google Cloud:
+               - Go to [Google Cloud Console](https://console.cloud.google.com/)
+               - Select your project
+               - Search for "Vertex AI API" and enable it
+            3. Create or specify a Cloud Storage bucket:
+               - Veo stores generated videos in Cloud Storage
+               - Enter a bucket name above and click "Create Bucket" or use an existing one
+            4. Grant your service account **Storage Object Admin** role:
+               - Go to IAM & Admin → IAM
+               - Find your service account
+               - Add role: "Storage Object Admin"
+            5. Veo is now ready to use!
+
+            **Pricing:**
+            - ~$0.35 per second of video generated
+            - 5-second video = ~$1.75
+            - 8-second video = ~$2.80
+            - Cloud Storage: ~$0.020/GB/month (minimal cost)
+
+            **Video Specifications:**
+            - Duration: 5-8 seconds
+            - Aspect ratios: 9:16 (vertical), 16:9 (landscape), 1:1 (square)
+            - Output format: MP4
+            - Generation time: 2-5 minutes
+            """)
+
+            st.markdown("---")
+            st.info("**Note:** Veo automatically uses your Vision API credentials!")
 
 
 def main():
