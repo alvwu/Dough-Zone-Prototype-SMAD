@@ -501,7 +501,443 @@ def get_caption_metrics(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def render_sidebar():
+def build_chat_chart(df: pd.DataFrame, chart_spec: dict):
+    """Build a Plotly chart from a chatbot chart spec."""
+    if not chart_spec or not isinstance(chart_spec, dict):
+        return None
+
+    chart_type = chart_spec.get("type")
+    x_field = chart_spec.get("x")
+    y_field = chart_spec.get("y")
+    z_field = chart_spec.get("z")
+    agg = chart_spec.get("agg", "mean")
+
+    df_chart = extract_time_features(df)
+    df_chart = calculate_engagement_metrics(df_chart)
+    df_chart['content_type'] = df_chart['is_video'].map({
+        True: 'Video', False: 'Image',
+        1: 'Video', 0: 'Image',
+        'TRUE': 'Video', 'FALSE': 'Image'
+    })
+
+    if y_field == "post_count":
+        df_chart["post_count"] = 1
+
+    if chart_type in {"bar", "line"}:
+        if not x_field or not y_field:
+            return None
+        grouped = df_chart.groupby(x_field)[y_field].agg(agg).reset_index()
+        if chart_type == "bar":
+            return px.bar(grouped, x=x_field, y=y_field, color=y_field, color_continuous_scale=WARM_SCALE)
+        return px.line(grouped, x=x_field, y=y_field, markers=True, color_discrete_sequence=[CHART_COLORS['accent']])
+
+    if chart_type == "pie":
+        if not x_field or not y_field:
+            return None
+        grouped = df_chart.groupby(x_field)[y_field].agg("sum").reset_index()
+        return px.pie(grouped, names=x_field, values=y_field, color_discrete_sequence=WARM_SEQUENCE)
+
+    if chart_type == "heatmap":
+        if not x_field or not y_field or not z_field:
+            return None
+        pivot = df_chart.pivot_table(index=y_field, columns=x_field, values=z_field, aggfunc="mean").fillna(0)
+        return px.imshow(pivot, color_continuous_scale=WARM_SCALE, aspect="auto")
+
+    return None
+
+
+def render_api_settings_sidebar():
+    """Render API settings in the sidebar."""
+    st.sidebar.markdown("### API Configuration")
+
+    with st.sidebar.expander("🔍 Google Vision API Settings", expanded=False):
+        st.markdown("Configure your Google Cloud Vision API credentials to enable automatic image analysis.")
+        st.markdown("---")
+
+        st.markdown("### Upload Service Account JSON")
+        uploaded_file = st.file_uploader(
+            "Drop your service account JSON file here",
+            type=['json'],
+            help="Upload the JSON key file from your Google Cloud service account"
+        )
+
+        if uploaded_file is not None:
+            try:
+                import json
+                credentials_content = uploaded_file.read().decode('utf-8')
+                credentials_dict = json.loads(credentials_content)
+
+                required_fields = ['private_key', 'client_email', 'project_id']
+                missing_fields = [f for f in required_fields if f not in credentials_dict]
+
+                if missing_fields:
+                    st.error(f"Invalid credentials file. Missing fields: {', '.join(missing_fields)}")
+                else:
+                    st.success(f"Credentials loaded for project: **{credentials_dict.get('project_id')}**")
+                    st.info(f"Service account: {credentials_dict.get('client_email')}")
+
+                    if st.button("💾 Save Credentials", use_container_width=True):
+                        st.session_state.vision_credentials = credentials_dict
+                        save_credentials(credentials_dict)
+                        with st.spinner("Validating credentials..."):
+                            try:
+                                is_valid = validate_credentials(credentials_dict)
+                                st.session_state.credentials_valid = is_valid
+                                if is_valid:
+                                    st.success("Credentials saved and validated successfully!")
+                                else:
+                                    st.warning("Credentials saved but could not be validated.")
+                            except Exception as e:
+                                st.session_state.credentials_valid = False
+                                st.warning(f"Credentials saved. Validation skipped: {str(e)}")
+                                st.session_state.credentials_valid = True
+                        st.rerun()
+
+            except json.JSONDecodeError:
+                st.error("Invalid JSON file. Please upload a valid service account JSON file.")
+            except Exception as e:
+                st.error(f"Error reading file: {str(e)}")
+
+        if st.session_state.vision_credentials:
+            st.markdown("---")
+            st.markdown("### Current Status")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.session_state.credentials_valid:
+                    st.success(f"✅ Connected: {st.session_state.vision_credentials.get('client_email', 'Unknown')}")
+                else:
+                    st.warning(f"⚠️ Credentials loaded: {st.session_state.vision_credentials.get('client_email', 'Unknown')}")
+            with col2:
+                if st.button("🗑️ Clear Credentials", use_container_width=True):
+                    st.session_state.vision_credentials = None
+                    st.session_state.credentials_valid = False
+                    st.session_state.vision_results = {}
+                    clear_saved_credentials()
+                    clear_vision_cache()
+                    st.info("Credentials cleared")
+                    st.rerun()
+
+        st.markdown("---")
+        st.markdown("""
+        ### How to Get Service Account JSON
+        1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+        2. Create a new project or select an existing one
+        3. Enable the **Cloud Vision API**
+        4. Go to **IAM & Admin** → **Service Accounts**
+        5. Click **Create Service Account**
+        6. Give it a name and click **Create**
+        7. Grant the role **Cloud Vision API User**
+        8. Click **Done**, then click on the service account
+        9. Go to **Keys** → **Add Key** → **Create new key** → **JSON**
+        10. Upload the downloaded JSON file above
+        """)
+
+        st.markdown("---")
+        st.markdown("**Note:** Credentials are saved locally and will persist until you clear them or restart the app.")
+        st.markdown("**Cost:** Google Vision API offers 1,000 free requests per month.")
+
+        st.markdown("---")
+        st.subheader("Batch Analyze All Images")
+
+        has_credentials = st.session_state.credentials_valid and st.session_state.vision_credentials
+        available_images = [f for f in IMAGE_DIR.iterdir() if f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif']] if IMAGE_DIR.exists() else []
+        analyzed_count = len(st.session_state.vision_results)
+
+        st.write(f"Found {len(available_images)} images | {analyzed_count} already analyzed")
+
+        if analyzed_count > 0:
+            col_analyze, col_clear = st.columns(2)
+            with col_clear:
+                if st.button("🗑️ Clear Vision Cache", use_container_width=True):
+                    st.session_state.vision_results = {}
+                    clear_vision_cache()
+                    st.info("Vision cache cleared")
+                    st.rerun()
+        else:
+            col_analyze = st.container()
+
+        if has_credentials:
+            with col_analyze if analyzed_count > 0 else st.container():
+                if st.button("🔄 Analyze All Unprocessed Images", use_container_width=True):
+                    unprocessed = [img for img in available_images if img.name not in st.session_state.vision_results]
+
+                    if not unprocessed:
+                        st.info("All images have already been analyzed!")
+                    else:
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+
+                        for i, image_path in enumerate(unprocessed):
+                            status_text.text(f"Analyzing {image_path.name}...")
+                            try:
+                                result = analyze_image_with_vision_api(
+                                    str(image_path),
+                                    credentials_dict=st.session_state.vision_credentials
+                                )
+                                st.session_state.vision_results[image_path.name] = result
+                            except Exception as e:
+                                st.warning(f"Failed to analyze {image_path.name}: {str(e)}")
+
+                            progress_bar.progress((i + 1) / len(unprocessed))
+
+                        save_vision_cache(st.session_state.vision_results)
+                        status_text.text("Done!")
+                        st.success(f"Analyzed {len(unprocessed)} images!")
+                        st.rerun()
+        else:
+            st.info("Configure and validate your credentials above to enable batch analysis.")
+
+    with st.sidebar.expander("🤖 AI API Settings (OpenRouter)", expanded=False):
+        st.markdown("Configure your OpenRouter API key to enable AI-powered prompt generation using Gemini 2.0 Flash.")
+        st.markdown("---")
+
+        st.markdown("### Enter OpenRouter API Key")
+        gemini_key_input = st.text_input(
+            "API Key",
+            value=st.session_state.gemini_api_key if st.session_state.gemini_api_key else "",
+            type="password",
+            help="Your OpenRouter API key from openrouter.ai",
+            placeholder="sk-or-v1-..."
+        )
+
+        col_save_gemini, col_test_gemini = st.columns(2)
+
+        with col_save_gemini:
+            if st.button("💾 Save API Key", use_container_width=True, key="save_openrouter_key"):
+                if gemini_key_input and len(gemini_key_input) > 20:
+                    st.session_state.gemini_api_key = gemini_key_input
+                    save_gemini_key(gemini_key_input)
+                    st.session_state.gemini_enabled = True
+                    st.success("OpenRouter API key saved successfully!")
+                    st.rerun()
+                else:
+                    st.error("Please enter a valid API key")
+
+        with col_test_gemini:
+            if st.button("🧪 Test Connection", use_container_width=True, key="test_openrouter_connection"):
+                if st.session_state.gemini_api_key:
+                    with st.spinner("Testing OpenRouter API connection..."):
+                        try:
+                            from openai import OpenAI
+
+                            client = OpenAI(
+                                base_url="https://openrouter.ai/api/v1",
+                                api_key=st.session_state.gemini_api_key
+                            )
+                            response = client.chat.completions.create(
+                                model='google/gemini-2.0-flash-001',
+                                messages=[
+                                    {"role": "user", "content": "Say 'API connection successful!' in exactly 3 words."}
+                                ]
+                            )
+                            result_text = response.choices[0].message.content
+                            st.success(f"✅ Connection successful! Response: {result_text[:50]}")
+                            st.session_state.gemini_enabled = True
+                        except Exception as e:
+                            st.error(f"❌ Connection failed: {str(e)}")
+                            st.session_state.gemini_enabled = False
+                else:
+                    st.warning("Please enter and save an API key first")
+
+        if st.session_state.gemini_api_key:
+            st.markdown("---")
+            st.markdown("### Current Status")
+            col_status, col_clear = st.columns(2)
+
+            with col_status:
+                if st.session_state.gemini_enabled:
+                    masked_key = "sk-***...***" + st.session_state.gemini_api_key[-4:]
+                    st.success(f"✅ AI Enabled (Gemini 2.0): {masked_key}")
+                else:
+                    st.warning("⚠️ API key saved but not tested")
+
+            with col_clear:
+                if st.button("🗑️ Clear API Key", use_container_width=True, key="clear_openrouter_key"):
+                    st.session_state.gemini_api_key = None
+                    st.session_state.gemini_enabled = False
+                    clear_gemini_key()
+                    st.info("API key cleared")
+                    st.rerun()
+
+        st.markdown("---")
+        st.markdown("""
+        ### How to Get OpenRouter API Key
+        1. Go to [OpenRouter](https://openrouter.ai/)
+        2. Sign in or create an account (free!)
+        3. Go to **Keys** section
+        4. Click **"Create Key"**
+        5. Copy the generated API key (starts with `sk-or-v1-...`)
+        6. Paste it above and click **"Save API Key"**
+
+        **Benefits:**
+        - **Free tier** with generous limits
+        - Access to **Gemini 2.0 Flash** (fast & powerful)
+        - More reliable than direct Gemini API
+        - Unified API for multiple AI models
+        """)
+
+        st.markdown("---")
+        st.info("**Note:** API key is saved locally and will persist until cleared.")
+
+    with st.sidebar.expander("🎨 Vertex AI Imagen Settings (Uses Vision API Credentials)", expanded=False):
+        st.markdown("Vertex AI Imagen uses the same Google Cloud credentials as Vision API.")
+        st.markdown("---")
+
+        if st.session_state.vision_credentials:
+            project_id = st.session_state.vision_credentials.get('project_id', 'Unknown')
+            st.success(f"✅ Using Vision API credentials for project: **{project_id}**")
+            st.info("💡 Imagen is automatically enabled when Vision API credentials are configured!")
+
+            if st.button("🧪 Test Vertex AI Imagen", use_container_width=True, key="test_imagen_connection"):
+                with st.spinner("Testing Vertex AI Imagen connection..."):
+                    try:
+                        is_valid = test_imagen_connection(st.session_state.vision_credentials)
+                        if is_valid:
+                            st.success("✅ Vertex AI Imagen connection successful!")
+                            st.session_state.imagen_enabled = True
+                        else:
+                            st.warning("⚠️ Connection test inconclusive. Imagen should still work if Vertex AI API is enabled.")
+                            st.session_state.imagen_enabled = True
+                    except Exception as e:
+                        st.error(f"❌ Connection test failed: {str(e)}")
+                        st.warning("💡 Make sure Vertex AI API is enabled in your Google Cloud project.")
+        else:
+            st.warning("⚠️ No Vision API credentials configured")
+            st.info("👆 Configure Vision API credentials above to enable Imagen")
+
+        st.markdown("---")
+        st.markdown("""
+        ### How to Enable Vertex AI Imagen
+
+        **Imagen uses the same credentials as Vision API!**
+
+        1. Configure Vision API credentials above (if not already done)
+        2. Enable **Vertex AI API** in Google Cloud:
+           - Go to [Google Cloud Console](https://console.cloud.google.com/)
+           - Select your project
+           - Search for "Vertex AI API" and enable it
+        3. Imagen is now ready to use!
+
+        **Pricing:**
+        - ~$0.020 per image (standard resolution)
+        - New accounts get $300 in free credits
+        - Same service account works for both Vision and Imagen
+        """)
+
+        st.markdown("---")
+        st.info("**Note:** Imagen automatically uses your Vision API credentials!")
+
+
+def render_chatbot_page(df: pd.DataFrame):
+    """Render a mini chatbot page using OpenRouter."""
+    st.title("🤖 Mini Chatbot")
+    st.caption("Ask for insights, recommendations, or a quick chart.")
+
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    model_options = [
+        "google/gemini-2.0-flash-001",
+        "openai/gpt-4o-mini",
+        "anthropic/claude-3.5-sonnet",
+        "mistralai/mistral-large",
+    ]
+    col_left, col_right = st.columns([2, 1])
+    with col_left:
+        user_prompt = st.text_area(
+            "Ask the assistant",
+            placeholder="Example: Show a chart of engagement by day of week and give recommendations.",
+            height=120
+        )
+    with col_right:
+        selected_model = st.selectbox(
+            "Model",
+            options=model_options,
+            index=0,
+            key="chat_model_select"
+        )
+
+    col_send, col_clear = st.columns(2)
+    send_clicked = col_send.button("Send", use_container_width=True)
+    clear_clicked = col_clear.button("Clear", use_container_width=True)
+
+    if clear_clicked:
+        st.session_state.chat_history = []
+        st.session_state.chat_last_chart = None
+        st.rerun()
+
+    if send_clicked and user_prompt.strip():
+        st.session_state.chat_history.append({"role": "user", "content": user_prompt.strip()})
+
+        if not st.session_state.gemini_api_key:
+            st.warning("Add your OpenRouter API key in the sidebar to use the chatbot.")
+        else:
+            with st.spinner("Thinking..."):
+                from chatbot_utils import build_chat_context, parse_chat_response
+
+                context = build_chat_context(df)
+                system_msg = (
+                    "You are a data analyst for an Instagram analytics dashboard. "
+                    "Use the provided dataset summary to answer the user. "
+                    "Return JSON with keys: answer (string), insights (list), "
+                    "recommendations (list), chart (object or null). "
+                    "If chart is provided, use one of types: bar, line, pie, heatmap. "
+                    "Use fields from: day_name, hour, time_of_day, content_type, "
+                    "likes, comments, total_engagement, post_count. "
+                    "For heatmap, use x=hour and y=day_name with z=total_engagement."
+                )
+
+                messages = [
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": f"DATASET_SUMMARY:\n{context}"},
+                ] + st.session_state.chat_history
+
+                try:
+                    from openai import OpenAI
+
+                    client = OpenAI(
+                        base_url="https://openrouter.ai/api/v1",
+                        api_key=st.session_state.gemini_api_key
+                    )
+                    response = client.chat.completions.create(
+                        model=selected_model,
+                        messages=messages
+                    )
+                    assistant_text = response.choices[0].message.content
+                except Exception as e:
+                    assistant_text = f'{{"answer": "Error contacting OpenRouter: {str(e)}", "insights": [], "recommendations": [], "chart": null}}'
+
+                parsed = parse_chat_response(assistant_text)
+                st.session_state.chat_history.append({"role": "assistant", "content": parsed["answer"]})
+                st.session_state.chat_last_chart = parsed.get("chart")
+                st.session_state.chat_last_insights = parsed.get("insights", [])
+                st.session_state.chat_last_recommendations = parsed.get("recommendations", [])
+                st.rerun()
+
+    if st.session_state.chat_history:
+        st.markdown("---")
+        for msg in st.session_state.chat_history[-6:]:
+            role = "You" if msg["role"] == "user" else "Assistant"
+            st.markdown(f"**{role}:** {msg['content']}")
+
+    if st.session_state.get("chat_last_insights"):
+        st.markdown("**Insights**")
+        for insight in st.session_state.chat_last_insights:
+            st.markdown(f"- {insight}")
+
+    if st.session_state.get("chat_last_recommendations"):
+        st.markdown("**Recommendations**")
+        for rec in st.session_state.chat_last_recommendations:
+            st.markdown(f"- {rec}")
+
+    chart_spec = st.session_state.get("chat_last_chart")
+    if chart_spec:
+        fig = build_chat_chart(df, chart_spec)
+        if fig is not None:
+            st.plotly_chart(fig, use_container_width=True)
+
+
+def render_sidebar(df: pd.DataFrame):
     """Render the sidebar with navigation and controls."""
     st.sidebar.title("📊 Analytics Dashboard")
     st.sidebar.markdown("---")
@@ -509,18 +945,20 @@ def render_sidebar():
     # Navigation - 4 pages now
     page = st.sidebar.radio(
         "Navigation",
-        ["Overview", "Post Analysis"]
+        ["Chatbot", "Overview", "Analysis", "Post Analysis"]
     )
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Quick Stats")
 
-    df = load_data()
     if len(df) > 0:
         summary = database.get_engagement_summary()
         st.sidebar.metric("Total Posts", summary['total_posts'])
         st.sidebar.metric("Total Likes", f"{summary['total_likes']:,}")
         st.sidebar.metric("Total Comments", f"{summary['total_comments']:,}")
+
+    st.sidebar.markdown("---")
+    render_api_settings_sidebar()
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### About")
@@ -1057,8 +1495,8 @@ def render_post_analysis(df: pd.DataFrame):
     df_processed = get_caption_metrics(df_processed)
 
     # Create tabs
-    tab_gallery, tab_explorer, tab_content, tab_ai_prompt, tab_api = st.tabs(
-        ["📸 Gallery", "🔍 Post Explorer", "📊 Content Insights", "🤖 AI Prompt Generator", "⚙️ API Settings"]
+    tab_gallery, tab_explorer, tab_content, tab_ai_prompt = st.tabs(
+        ["📸 Gallery", "🔍 Post Explorer", "📊 Content Insights", "🤖 AI Prompt Generator"]
     )
 
     # --- GALLERY TAB ---
@@ -1254,7 +1692,7 @@ def render_post_analysis(df: pd.DataFrame):
                             except Exception as e:
                                 st.error(f"Error: {str(e)}")
                 else:
-                    st.info("Configure API credentials in the API Settings tab to enable Vision analysis")
+                    st.info("Configure API credentials in the sidebar to enable Vision analysis")
             else:
                 st.info(f"📷 Image: {image_file or 'Not available'}")
 
@@ -1377,7 +1815,7 @@ def render_post_analysis(df: pd.DataFrame):
             else:
                 st.info("No labels found in analyzed images.")
         else:
-            st.info("No images analyzed yet. Go to **API Settings** to configure Vision API and analyze images.")
+            st.info("No images analyzed yet. Configure Vision API in the sidebar and analyze images.")
 
         st.markdown("---")
 
@@ -1501,7 +1939,7 @@ def render_post_analysis(df: pd.DataFrame):
                         unsafe_allow_html=True
                     )
         else:
-            st.info("No images analyzed yet. Go to **API Settings** to configure Vision API and analyze images to generate recommendations.")
+            st.info("No images analyzed yet. Configure Vision API in the sidebar and analyze images to generate recommendations.")
 
         st.markdown("---")
 
@@ -1647,7 +2085,7 @@ def render_post_analysis(df: pd.DataFrame):
                 st.success("✅ Using **Gemini 2.0 Flash** (`google/gemini-2.0-flash-001`) via OpenRouter API")
             else:
                 st.warning("⚠️ OpenRouter API not configured. Will use template-based generation instead.")
-                st.caption("💡 Configure OpenRouter API in Settings to enable AI-powered generation")
+                st.caption("💡 Configure OpenRouter API in the sidebar to enable AI-powered generation")
 
             # Generate button (always generates 1 prompt at a time)
             num_prompts = 1
@@ -1675,7 +2113,7 @@ def render_post_analysis(df: pd.DataFrame):
                             st.success("✅ Prompt generated using Gemini AI!")
                             st.info("🤖 This prompt was intelligently generated by analyzing your top-performing content")
                         else:
-                            st.error("Failed to generate prompts with Gemini. Please check your API key in Settings.")
+                            st.error("Failed to generate prompts with Gemini. Please check your API key in the sidebar.")
                             st.session_state.ai_generated_prompts = []
                 else:
                     # Fallback: Template-based generation
@@ -1746,7 +2184,7 @@ def render_post_analysis(df: pd.DataFrame):
 
                         st.session_state.ai_generated_prompts = generated_prompts
                         st.success("✅ Prompt generated!")
-                        st.info("💡 Enable OpenRouter API in Settings for AI-powered prompt generation with Gemini 2.0")
+                        st.info("💡 Enable OpenRouter API in the sidebar for AI-powered prompt generation with Gemini 2.0")
 
             # Display generated prompts (OUTSIDE the button block to prevent resets)
             if st.session_state.ai_generated_prompts:
@@ -1807,7 +2245,7 @@ def render_post_analysis(df: pd.DataFrame):
                                     try:
                                         # Validate API key exists
                                         if not st.session_state.vision_credentials:
-                                            st.error("❌ No Vision API credentials found. Please configure them in Settings.")
+                                            st.error("❌ No Vision API credentials found. Please configure them in the sidebar.")
                                         else:
                                             # Create output directory
                                             GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
@@ -1864,7 +2302,7 @@ def render_post_analysis(df: pd.DataFrame):
                                 if st.button("🗑️ Clear", key=f"clear_{idx}"):
                                     st.session_state[prompt_key] = None
                         elif prompt_data['type'] == 'Image' and not st.session_state.imagen_enabled:
-                            st.info("💡 Configure Vertex AI Imagen in API Settings to generate images directly")
+                            st.info("💡 Configure Vertex AI Imagen in the sidebar to generate images directly")
 
         # ============== CUSTOM MODE ==============
         else:  # gen_mode == "Custom"
@@ -2010,7 +2448,7 @@ def render_post_analysis(df: pd.DataFrame):
                         with st.spinner("🎨 Generating with Vertex AI Imagen... (10-15 seconds)"):
                             try:
                                 if not st.session_state.vision_credentials:
-                                    st.error("❌ No Vision API credentials found. Please configure them in Settings.")
+                                    st.error("❌ No Vision API credentials found. Please configure them in the sidebar.")
                                 else:
                                     GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
                                     result = generate_image_with_imagen(
@@ -2059,7 +2497,7 @@ def render_post_analysis(df: pd.DataFrame):
                             st.session_state.custom_generated_img = None
 
                 elif content_type == 'Image' and not st.session_state.imagen_enabled:
-                    st.info("💡 Configure Vertex AI Imagen in API Settings to generate images directly")
+                    st.info("💡 Configure Vertex AI Imagen in the sidebar to generate images directly")
 
         st.markdown("---")
 
@@ -2079,313 +2517,13 @@ def render_post_analysis(df: pd.DataFrame):
             - **Enhancement:** Topaz AI, Magnific AI, Krea.ai
 
             **Imagen Integration:**
-            - Configure Imagen in API Settings to generate images directly in the dashboard
+            - Configure Imagen in the sidebar to generate images directly in the dashboard
             - Uses Google AI Studio API with 50 free images per day
             - Approximately $0.04 per image after free tier (cheaper than Vertex AI)
             - Supports multiple aspect ratios (1:1, 9:16, 16:9, 4:3, 3:4)
 
             **Pro Tip:** Track which AI-generated content performs best and use those insights to refine future prompts!
             """)
-
-    # --- API SETTINGS TAB ---
-    with tab_api:
-        st.markdown("### API Configuration")
-        st.markdown("Manage your Google Cloud Vision and Gemini AI API settings")
-        st.markdown("---")
-
-        # Google Vision API Settings - Collapsible
-        with st.expander("🔍 Google Vision API Settings", expanded=False):
-            st.markdown("Configure your Google Cloud Vision API credentials to enable automatic image analysis.")
-            st.markdown("---")
-
-            # JSON Credentials upload
-            st.markdown("### Upload Service Account JSON")
-            uploaded_file = st.file_uploader(
-                "Drop your service account JSON file here",
-                type=['json'],
-                help="Upload the JSON key file from your Google Cloud service account"
-            )
-
-            if uploaded_file is not None:
-                try:
-                    import json
-                    credentials_content = uploaded_file.read().decode('utf-8')
-                    credentials_dict = json.loads(credentials_content)
-
-                    # Validate required fields
-                    required_fields = ['private_key', 'client_email', 'project_id']
-                    missing_fields = [f for f in required_fields if f not in credentials_dict]
-
-                    if missing_fields:
-                        st.error(f"Invalid credentials file. Missing fields: {', '.join(missing_fields)}")
-                    else:
-                        st.success(f"Credentials loaded for project: **{credentials_dict.get('project_id')}**")
-                        st.info(f"Service account: {credentials_dict.get('client_email')}")
-
-                        if st.button("💾 Save Credentials", use_container_width=True):
-                            st.session_state.vision_credentials = credentials_dict
-                            save_credentials(credentials_dict)  # Save to file
-                            with st.spinner("Validating credentials..."):
-                                try:
-                                    is_valid = validate_credentials(credentials_dict)
-                                    st.session_state.credentials_valid = is_valid
-                                    if is_valid:
-                                        st.success("Credentials saved and validated successfully!")
-                                    else:
-                                        st.warning("Credentials saved but could not be validated.")
-                                except Exception as e:
-                                    st.session_state.credentials_valid = False
-                                    st.warning(f"Credentials saved. Validation skipped: {str(e)}")
-                                    st.session_state.credentials_valid = True  # Allow usage anyway
-                            st.rerun()
-
-                except json.JSONDecodeError:
-                    st.error("Invalid JSON file. Please upload a valid service account JSON file.")
-                except Exception as e:
-                    st.error(f"Error reading file: {str(e)}")
-
-            # Current status
-            if st.session_state.vision_credentials:
-                st.markdown("---")
-                st.markdown("### Current Status")
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.session_state.credentials_valid:
-                        st.success(f"✅ Connected: {st.session_state.vision_credentials.get('client_email', 'Unknown')}")
-                    else:
-                        st.warning(f"⚠️ Credentials loaded: {st.session_state.vision_credentials.get('client_email', 'Unknown')}")
-                with col2:
-                    if st.button("🗑️ Clear Credentials", use_container_width=True):
-                        st.session_state.vision_credentials = None
-                        st.session_state.credentials_valid = False
-                        st.session_state.vision_results = {}
-                        clear_saved_credentials()
-                        clear_vision_cache()
-                        st.info("Credentials cleared")
-                        st.rerun()
-
-            st.markdown("---")
-            st.markdown("""
-            ### How to Get Service Account JSON
-            1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-            2. Create a new project or select an existing one
-            3. Enable the **Cloud Vision API**
-            4. Go to **IAM & Admin** → **Service Accounts**
-            5. Click **Create Service Account**
-            6. Give it a name and click **Create**
-            7. Grant the role **Cloud Vision API User**
-            8. Click **Done**, then click on the service account
-            9. Go to **Keys** → **Add Key** → **Create new key** → **JSON**
-            10. Upload the downloaded JSON file above
-            """)
-
-            st.markdown("---")
-            st.markdown("**Note:** Credentials are saved locally and will persist until you clear them or restart the app.")
-            st.markdown("**Cost:** Google Vision API offers 1,000 free requests per month.")
-
-            # Batch analyze section
-            st.markdown("---")
-            st.subheader("Batch Analyze All Images")
-
-            has_credentials = st.session_state.credentials_valid and st.session_state.vision_credentials
-
-            # Count images and show cache info
-            available_images = [f for f in IMAGE_DIR.iterdir() if f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif']] if IMAGE_DIR.exists() else []
-            analyzed_count = len(st.session_state.vision_results)
-
-            st.write(f"Found {len(available_images)} images | {analyzed_count} already analyzed")
-
-            # Clear Vision Cache button
-            if analyzed_count > 0:
-                col_analyze, col_clear = st.columns(2)
-                with col_clear:
-                    if st.button("🗑️ Clear Vision Cache", use_container_width=True):
-                        st.session_state.vision_results = {}
-                        clear_vision_cache()
-                        st.info("Vision cache cleared")
-                        st.rerun()
-            else:
-                col_analyze = st.container()
-
-            if has_credentials:
-                with col_analyze if analyzed_count > 0 else st.container():
-                    if st.button("🔄 Analyze All Unprocessed Images", use_container_width=True):
-                        unprocessed = [img for img in available_images if img.name not in st.session_state.vision_results]
-
-                        if not unprocessed:
-                            st.info("All images have already been analyzed!")
-                        else:
-                            progress_bar = st.progress(0)
-                            status_text = st.empty()
-
-                            for i, image_path in enumerate(unprocessed):
-                                status_text.text(f"Analyzing {image_path.name}...")
-                                try:
-                                    result = analyze_image_with_vision_api(
-                                        str(image_path),
-                                        credentials_dict=st.session_state.vision_credentials
-                                    )
-                                    st.session_state.vision_results[image_path.name] = result
-                                except Exception as e:
-                                    st.warning(f"Failed to analyze {image_path.name}: {str(e)}")
-
-                                progress_bar.progress((i + 1) / len(unprocessed))
-
-                            save_vision_cache(st.session_state.vision_results)
-                            status_text.text("Done!")
-                            st.success(f"Analyzed {len(unprocessed)} images!")
-                            st.rerun()
-            else:
-                st.info("Configure and validate your credentials above to enable batch analysis.")
-
-        # --- AI API SETTINGS SECTION ---
-        with st.expander("🤖 AI API Settings (OpenRouter)", expanded=False):
-            st.markdown("Configure your OpenRouter API key to enable AI-powered prompt generation using Gemini 2.0 Flash.")
-            st.markdown("---")
-
-            # OpenRouter API Key Input
-            st.markdown("### Enter OpenRouter API Key")
-
-            gemini_key_input = st.text_input(
-                "API Key",
-                value=st.session_state.gemini_api_key if st.session_state.gemini_api_key else "",
-                type="password",
-                help="Your OpenRouter API key from openrouter.ai",
-                placeholder="sk-or-v1-..."
-            )
-
-            col_save_gemini, col_test_gemini = st.columns(2)
-
-            with col_save_gemini:
-                if st.button("💾 Save API Key", use_container_width=True, key="save_openrouter_key"):
-                    if gemini_key_input and len(gemini_key_input) > 20:
-                        st.session_state.gemini_api_key = gemini_key_input
-                        save_gemini_key(gemini_key_input)
-                        st.session_state.gemini_enabled = True
-                        st.success("OpenRouter API key saved successfully!")
-                        st.rerun()
-                    else:
-                        st.error("Please enter a valid API key")
-
-            with col_test_gemini:
-                if st.button("🧪 Test Connection", use_container_width=True, key="test_openrouter_connection"):
-                    if st.session_state.gemini_api_key:
-                        with st.spinner("Testing OpenRouter API connection..."):
-                            try:
-                                from openai import OpenAI
-
-                                client = OpenAI(
-                                    base_url="https://openrouter.ai/api/v1",
-                                    api_key=st.session_state.gemini_api_key
-                                )
-                                response = client.chat.completions.create(
-                                    model='google/gemini-2.0-flash-001',
-                                    messages=[
-                                        {"role": "user", "content": "Say 'API connection successful!' in exactly 3 words."}
-                                    ]
-                                )
-                                result_text = response.choices[0].message.content
-                                st.success(f"✅ Connection successful! Response: {result_text[:50]}")
-                                st.session_state.gemini_enabled = True
-                            except Exception as e:
-                                st.error(f"❌ Connection failed: {str(e)}")
-                                st.session_state.gemini_enabled = False
-                    else:
-                        st.warning("Please enter and save an API key first")
-
-            # Current API Status
-            if st.session_state.gemini_api_key:
-                st.markdown("---")
-                st.markdown("### Current Status")
-                col_status, col_clear = st.columns(2)
-
-                with col_status:
-                    if st.session_state.gemini_enabled:
-                        # Mask the API key completely for security
-                        masked_key = "sk-***...***" + st.session_state.gemini_api_key[-4:]
-                        st.success(f"✅ AI Enabled (Gemini 2.0): {masked_key}")
-                    else:
-                        st.warning("⚠️ API key saved but not tested")
-
-                with col_clear:
-                    if st.button("🗑️ Clear API Key", use_container_width=True, key="clear_openrouter_key"):
-                        st.session_state.gemini_api_key = None
-                        st.session_state.gemini_enabled = False
-                        clear_gemini_key()
-                        st.info("API key cleared")
-                        st.rerun()
-
-            st.markdown("---")
-            st.markdown("""
-            ### How to Get OpenRouter API Key
-            1. Go to [OpenRouter](https://openrouter.ai/)
-            2. Sign in or create an account (free!)
-            3. Go to **Keys** section
-            4. Click **"Create Key"**
-            5. Copy the generated API key (starts with `sk-or-v1-...`)
-            6. Paste it above and click **"Save API Key"**
-
-            **Benefits:**
-            - **Free tier** with generous limits
-            - Access to **Gemini 2.0 Flash** (fast & powerful)
-            - More reliable than direct Gemini API
-            - Unified API for multiple AI models
-            """)
-
-            st.markdown("---")
-            st.info("**Note:** API key is saved locally and will persist until cleared.")
-
-        # --- VERTEX AI IMAGEN SETTINGS SECTION ---
-        with st.expander("🎨 Vertex AI Imagen Settings (Uses Vision API Credentials)", expanded=False):
-            st.markdown("Vertex AI Imagen uses the same Google Cloud credentials as Vision API.")
-            st.markdown("---")
-
-            # Show current status
-            if st.session_state.vision_credentials:
-                project_id = st.session_state.vision_credentials.get('project_id', 'Unknown')
-                st.success(f"✅ Using Vision API credentials for project: **{project_id}**")
-                st.info("💡 Imagen is automatically enabled when Vision API credentials are configured!")
-
-                # Test connection button
-                if st.button("🧪 Test Vertex AI Imagen", use_container_width=True, key="test_imagen_connection"):
-                    with st.spinner("Testing Vertex AI Imagen connection..."):
-                        try:
-                            is_valid = test_imagen_connection(st.session_state.vision_credentials)
-                            if is_valid:
-                                st.success("✅ Vertex AI Imagen connection successful!")
-                                st.session_state.imagen_enabled = True
-                            else:
-                                st.warning("⚠️ Connection test inconclusive. Imagen should still work if Vertex AI API is enabled.")
-                                st.session_state.imagen_enabled = True
-                        except Exception as e:
-                            st.error(f"❌ Connection test failed: {str(e)}")
-                            st.warning("💡 Make sure Vertex AI API is enabled in your Google Cloud project.")
-            else:
-                st.warning("⚠️ No Vision API credentials configured")
-                st.info("👆 Configure Vision API credentials above to enable Imagen")
-
-            st.markdown("---")
-            st.markdown("""
-            ### How to Enable Vertex AI Imagen
-
-            **Imagen uses the same credentials as Vision API!**
-
-            1. Configure Vision API credentials above (if not already done)
-            2. Enable **Vertex AI API** in Google Cloud:
-               - Go to [Google Cloud Console](https://console.cloud.google.com/)
-               - Select your project
-               - Search for "Vertex AI API" and enable it
-            3. Imagen is now ready to use!
-
-            **Pricing:**
-            - ~$0.020 per image (standard resolution)
-            - New accounts get $300 in free credits
-            - Same service account works for both Vision and Imagen
-            """)
-
-            st.markdown("---")
-            st.info("**Note:** Imagen automatically uses your Vision API credentials!")
-
 
 def main():
     """Main application entry point."""
@@ -2396,24 +2534,24 @@ def main():
     df = load_data()
 
     # Render sidebar and get current page
-    page = render_sidebar()
+    page = render_sidebar(df)
 
     # Render selected page
-    if page == "Overview":
-        # Overview page with 3 tabs
+    if page == "Chatbot":
+        render_chatbot_page(df)
+    elif page == "Overview":
         st.title("📊 Social Media Analytics Dashboard")
         st.markdown("---")
+        render_overview(df)
 
-        tab_overview, tab_engagement, tab_time = st.tabs(
-            ["📊 Overview", "💬 Engagement Analysis", "⏰ Time Analysis"]
+    elif page == "Analysis":
+        st.title("📈 Analysis")
+        st.markdown("---")
+        tab_engagement, tab_time = st.tabs(
+            ["💬 Engagement Analysis", "⏰ Time Analysis"]
         )
-
-        with tab_overview:
-            render_overview(df)
-
         with tab_engagement:
             render_engagement_analysis(df)
-
         with tab_time:
             render_time_analysis(df)
 
