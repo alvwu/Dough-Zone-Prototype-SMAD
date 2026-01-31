@@ -188,29 +188,6 @@ The app automatically loads CSV files from the `data/` folder:
 3. Data is stored in a local SQLite database for faster access
 4. Sample data is included: `data/insta_dummy_data(in).csv`
 
-## Instagram Data Collection (Official API)
-
-This project includes an official Instagram Graph API scraper that outputs a CSV compatible with the dashboard and can optionally download media into `image/`.
-
-### Setup Requirements
-- Instagram account must be Business/Creator and connected to a Facebook Page.
-- Facebook App with Instagram Graph API enabled.
-- Long‑lived access token with `instagram_basic` and `pages_show_list` permissions (add `instagram_manage_insights` if you plan to pull insights).
-
-### Run the Scraper
-```bash
-export IG_USER_ID="YOUR_IG_BUSINESS_USER_ID"
-export IG_ACCESS_TOKEN="YOUR_LONG_LIVED_TOKEN"
-export IG_USERNAME="doughzoneusa"  # optional
-
-python3 instagram_scraper.py --out data/instagram_doughzone.csv --download-media
-```
-
-### Notes
-- The scraper writes both the SMAD core columns and common Graph API fields; the app reads from `data/` on startup.
-- Insights (reach/saves/etc.) are not included by default; see `SCRAPING_GUIDE.md` for details and next steps.
-- Rate limits apply to the Graph API; batch requests carefully if you fetch large histories.
-
 ### Analyzing Engagement
 
 1. **Overview**: View summary statistics and quick metrics

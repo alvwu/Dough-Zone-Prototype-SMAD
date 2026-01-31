@@ -501,51 +501,6 @@ def get_caption_metrics(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def build_chat_chart(df: pd.DataFrame, chart_spec: dict):
-    """Build a Plotly chart from a chatbot chart spec."""
-    if not chart_spec or not isinstance(chart_spec, dict):
-        return None
-
-    chart_type = chart_spec.get("type")
-    x_field = chart_spec.get("x")
-    y_field = chart_spec.get("y")
-    z_field = chart_spec.get("z")
-    agg = chart_spec.get("agg", "mean")
-
-    df_chart = extract_time_features(df)
-    df_chart = calculate_engagement_metrics(df_chart)
-    df_chart['content_type'] = df_chart['is_video'].map({
-        True: 'Video', False: 'Image',
-        1: 'Video', 0: 'Image',
-        'TRUE': 'Video', 'FALSE': 'Image'
-    })
-
-    if y_field == "post_count":
-        df_chart["post_count"] = 1
-
-    if chart_type in {"bar", "line"}:
-        if not x_field or not y_field:
-            return None
-        grouped = df_chart.groupby(x_field)[y_field].agg(agg).reset_index()
-        if chart_type == "bar":
-            return px.bar(grouped, x=x_field, y=y_field, color=y_field, color_continuous_scale=WARM_SCALE)
-        return px.line(grouped, x=x_field, y=y_field, markers=True, color_discrete_sequence=[CHART_COLORS['accent']])
-
-    if chart_type == "pie":
-        if not x_field or not y_field:
-            return None
-        grouped = df_chart.groupby(x_field)[y_field].agg("sum").reset_index()
-        return px.pie(grouped, names=x_field, values=y_field, color_discrete_sequence=WARM_SEQUENCE)
-
-    if chart_type == "heatmap":
-        if not x_field or not y_field or not z_field:
-            return None
-        pivot = df_chart.pivot_table(index=y_field, columns=x_field, values=z_field, aggfunc="mean").fillna(0)
-        return px.imshow(pivot, color_continuous_scale=WARM_SCALE, aspect="auto")
-
-    return None
-
-
 def render_api_settings_sidebar():
     """Render API settings in the sidebar."""
     st.sidebar.markdown("### API Configuration")
@@ -828,124 +783,15 @@ def render_api_settings_sidebar():
         st.info("**Note:** Imagen automatically uses your Vision API credentials!")
 
 
-def render_chatbot_page(df: pd.DataFrame):
-    """Render a mini chatbot page using OpenRouter."""
-    st.title("🤖 Mini Chatbot")
-    st.caption("Ask for insights, recommendations, or a quick chart.")
-
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
-
-    model_options = [
-        "google/gemini-2.0-flash-001",
-        "openai/gpt-4o-mini",
-        "anthropic/claude-3.5-sonnet",
-        "mistralai/mistral-large",
-    ]
-    col_left, col_right = st.columns([2, 1])
-    with col_left:
-        user_prompt = st.text_area(
-            "Ask the assistant",
-            placeholder="Example: Show a chart of engagement by day of week and give recommendations.",
-            height=120
-        )
-    with col_right:
-        selected_model = st.selectbox(
-            "Model",
-            options=model_options,
-            index=0,
-            key="chat_model_select"
-        )
-
-    col_send, col_clear = st.columns(2)
-    send_clicked = col_send.button("Send", use_container_width=True)
-    clear_clicked = col_clear.button("Clear", use_container_width=True)
-
-    if clear_clicked:
-        st.session_state.chat_history = []
-        st.session_state.chat_last_chart = None
-        st.rerun()
-
-    if send_clicked and user_prompt.strip():
-        st.session_state.chat_history.append({"role": "user", "content": user_prompt.strip()})
-
-        if not st.session_state.gemini_api_key:
-            st.warning("Add your OpenRouter API key in the sidebar to use the chatbot.")
-        else:
-            with st.spinner("Thinking..."):
-                from chatbot_utils import build_chat_context, parse_chat_response
-
-                context = build_chat_context(df)
-                system_msg = (
-                    "You are a data analyst for an Instagram analytics dashboard. "
-                    "Use the provided dataset summary to answer the user. "
-                    "Return JSON with keys: answer (string), insights (list), "
-                    "recommendations (list), chart (object or null). "
-                    "If chart is provided, use one of types: bar, line, pie, heatmap. "
-                    "Use fields from: day_name, hour, time_of_day, content_type, "
-                    "likes, comments, total_engagement, post_count. "
-                    "For heatmap, use x=hour and y=day_name with z=total_engagement."
-                )
-
-                messages = [
-                    {"role": "system", "content": system_msg},
-                    {"role": "user", "content": f"DATASET_SUMMARY:\n{context}"},
-                ] + st.session_state.chat_history
-
-                try:
-                    from openai import OpenAI
-
-                    client = OpenAI(
-                        base_url="https://openrouter.ai/api/v1",
-                        api_key=st.session_state.gemini_api_key
-                    )
-                    response = client.chat.completions.create(
-                        model=selected_model,
-                        messages=messages
-                    )
-                    assistant_text = response.choices[0].message.content
-                except Exception as e:
-                    assistant_text = f'{{"answer": "Error contacting OpenRouter: {str(e)}", "insights": [], "recommendations": [], "chart": null}}'
-
-                parsed = parse_chat_response(assistant_text)
-                st.session_state.chat_history.append({"role": "assistant", "content": parsed["answer"]})
-                st.session_state.chat_last_chart = parsed.get("chart")
-                st.session_state.chat_last_insights = parsed.get("insights", [])
-                st.session_state.chat_last_recommendations = parsed.get("recommendations", [])
-                st.rerun()
-
-    if st.session_state.chat_history:
-        st.markdown("---")
-        for msg in st.session_state.chat_history[-6:]:
-            role = "You" if msg["role"] == "user" else "Assistant"
-            st.markdown(f"**{role}:** {msg['content']}")
-
-    if st.session_state.get("chat_last_insights"):
-        st.markdown("**Insights**")
-        for insight in st.session_state.chat_last_insights:
-            st.markdown(f"- {insight}")
-
-    if st.session_state.get("chat_last_recommendations"):
-        st.markdown("**Recommendations**")
-        for rec in st.session_state.chat_last_recommendations:
-            st.markdown(f"- {rec}")
-
-    chart_spec = st.session_state.get("chat_last_chart")
-    if chart_spec:
-        fig = build_chat_chart(df, chart_spec)
-        if fig is not None:
-            st.plotly_chart(fig, use_container_width=True)
-
-
 def render_sidebar(df: pd.DataFrame):
     """Render the sidebar with navigation and controls."""
     st.sidebar.title("📊 Analytics Dashboard")
     st.sidebar.markdown("---")
 
-    # Navigation - 4 pages now
+    # Navigation
     page = st.sidebar.radio(
         "Navigation",
-        ["Chatbot", "Overview", "Analysis", "Post Analysis"]
+        ["Overview", "Analysis", "Post Analysis"]
     )
 
     st.sidebar.markdown("---")
@@ -2537,9 +2383,7 @@ def main():
     page = render_sidebar(df)
 
     # Render selected page
-    if page == "Chatbot":
-        render_chatbot_page(df)
-    elif page == "Overview":
+    if page == "Overview":
         st.title("📊 Social Media Analytics Dashboard")
         st.markdown("---")
         render_overview(df)
