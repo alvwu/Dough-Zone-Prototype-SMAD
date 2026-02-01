@@ -33,6 +33,7 @@ from imagen_api import (
     save_generated_image,
     estimate_imagen_cost
 )
+from instagram_scraper import scrape_instagram, write_csv, get_username
 
 # Page configuration
 st.set_page_config(
@@ -49,6 +50,8 @@ GENERATED_IMAGES_DIR = Path(__file__).parent / "generated_images"
 CREDENTIALS_FILE = Path(__file__).parent / ".vision_credentials.json"
 VISION_CACHE_FILE = Path(__file__).parent / ".vision_cache.json"
 GEMINI_KEY_FILE = Path(__file__).parent / ".gemini_key.txt"
+IG_TOKEN_FILE = Path(__file__).parent / ".ig_access_token.txt"
+IG_USER_ID_FILE = Path(__file__).parent / ".ig_user_id.txt"
 # Imagen uses the same credentials as Vision API (no separate file needed)
 
 # Warm orange color palette for charts
@@ -414,6 +417,48 @@ def clear_gemini_key():
         GEMINI_KEY_FILE.unlink()
 
 
+def load_ig_access_token():
+    """Load Instagram access token from file."""
+    if IG_TOKEN_FILE.exists():
+        try:
+            return IG_TOKEN_FILE.read_text().strip()
+        except Exception:
+            return None
+    return None
+
+
+def save_ig_access_token(token: str):
+    """Save Instagram access token to file."""
+    IG_TOKEN_FILE.write_text(token.strip())
+
+
+def clear_ig_access_token():
+    """Remove saved Instagram access token file."""
+    if IG_TOKEN_FILE.exists():
+        IG_TOKEN_FILE.unlink()
+
+
+def load_ig_user_id():
+    """Load Instagram user ID from file."""
+    if IG_USER_ID_FILE.exists():
+        try:
+            return IG_USER_ID_FILE.read_text().strip()
+        except Exception:
+            return None
+    return None
+
+
+def save_ig_user_id(user_id: str):
+    """Save Instagram user ID to file."""
+    IG_USER_ID_FILE.write_text(user_id.strip())
+
+
+def clear_ig_user_id():
+    """Remove saved Instagram user ID file."""
+    if IG_USER_ID_FILE.exists():
+        IG_USER_ID_FILE.unlink()
+
+
 # Imagen now uses the same Vision API credentials - no separate functions needed
 
 
@@ -440,6 +485,12 @@ def init_session_state():
         saved_gemini_key = load_gemini_key()
         st.session_state.gemini_api_key = saved_gemini_key
         st.session_state.gemini_enabled = saved_gemini_key is not None
+
+    if 'ig_access_token' not in st.session_state:
+        st.session_state.ig_access_token = load_ig_access_token()
+
+    if 'ig_user_id' not in st.session_state:
+        st.session_state.ig_user_id = load_ig_user_id()
 
     # Imagen uses Vision API credentials - enabled if Vision credentials are loaded
     if 'imagen_enabled' not in st.session_state:
@@ -781,6 +832,75 @@ def render_api_settings_sidebar():
 
         st.markdown("---")
         st.info("**Note:** Imagen automatically uses your Vision API credentials!")
+
+    with st.sidebar.expander("📥 Instagram Graph API Import", expanded=False):
+        st.markdown("Fetch Instagram posts via the official Graph API and append to the database.")
+        st.markdown("---")
+
+        ig_user_id = st.text_input(
+            "Instagram Business User ID",
+            value=st.session_state.ig_user_id or "",
+            placeholder="1784... (numeric ID)",
+        )
+        ig_access_token = st.text_input(
+            "Instagram Access Token",
+            value=st.session_state.ig_access_token or "",
+            type="password",
+            placeholder="IG access token"
+        )
+        ig_username = st.text_input(
+            "Username (optional override)",
+            value="doughzoneusa",
+            placeholder="doughzoneusa"
+        )
+
+        col_save_ig, col_clear_ig = st.columns(2)
+        with col_save_ig:
+            if st.button("💾 Save IG Credentials", use_container_width=True):
+                if ig_access_token and ig_user_id:
+                    st.session_state.ig_access_token = ig_access_token
+                    st.session_state.ig_user_id = ig_user_id
+                    save_ig_access_token(ig_access_token)
+                    save_ig_user_id(ig_user_id)
+                    st.success("Instagram credentials saved.")
+                else:
+                    st.error("Please enter both IG User ID and Access Token.")
+        with col_clear_ig:
+            if st.button("🗑️ Clear IG Credentials", use_container_width=True):
+                st.session_state.ig_access_token = None
+                st.session_state.ig_user_id = None
+                clear_ig_access_token()
+                clear_ig_user_id()
+                st.info("Instagram credentials cleared.")
+
+        st.markdown("---")
+        col_limit, col_download = st.columns(2)
+        with col_limit:
+            limit = st.number_input("Max posts", min_value=0, max_value=500, value=100, step=10)
+        with col_download:
+            download_media = st.checkbox("Download media", value=False)
+
+        output_csv = st.text_input("Output CSV", value="data/instagram_doughzone.csv")
+
+        if st.button("⬇️ Fetch Instagram Data", use_container_width=True):
+            if not ig_user_id or not ig_access_token:
+                st.error("IG User ID and Access Token are required.")
+            else:
+                with st.spinner("Fetching Instagram posts..."):
+                    username = ig_username or get_username(ig_user_id, ig_access_token) or "instagram_account"
+                    rows = scrape_instagram(
+                        ig_user_id=ig_user_id,
+                        access_token=ig_access_token,
+                        username=username,
+                        limit=int(limit),
+                        download_assets=download_media,
+                        media_dir=IMAGE_DIR,
+                        sleep_seconds=0.0,
+                    )
+                    write_csv(rows, Path(output_csv))
+                    loaded = database.load_csv_to_database(output_csv, replace_existing=False)
+                    st.success(f"Fetched {len(rows)} posts. Appended {loaded} rows to the database.")
+                    st.rerun()
 
 
 def render_sidebar(df: pd.DataFrame):
